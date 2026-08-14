@@ -1,0 +1,19 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #e8edf5; background: #10141d; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 960px; min-height: 100vh; }
+button, input { font: inherit; }
+button { border: 1px solid #303b4d; border-radius: 8px; color: inherit; background: #1b2432; cursor: pointer; }
+button:hover { border-color: #7aa2f7; }
+.app-shell { min-height: 100vh; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 24px 32px; border-bottom: 1px solid #252e3c; background: #131923; }
+h1, h2, p { margin: 0; } h1 { font-size: 22px; } h2 { font-size: 18px; }
+.eyebrow { color: #7aa2f7; letter-spacing: .12em; font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+.health { padding: 6px 10px; border-radius: 999px; font-size: 12px; text-transform: capitalize; } .health.online { color: #9be5b1; background: #173321; } .health.offline { color: #ff9b9b; background: #3b1d22; } .health.checking { color: #f2d58a; background: #3b321d; }
+main { display: grid; grid-template-columns: 270px 1fr; min-height: calc(100vh - 91px); }
+aside { padding: 24px 18px; border-right: 1px solid #252e3c; background: #111722; } .workspace { padding: 32px 42px; max-width: 1100px; width: 100%; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; } .section-heading button { padding: 6px 10px; }
+.project { display: block; width: 100%; text-align: left; padding: 11px 12px; margin-bottom: 8px; background: transparent; border-color: transparent; } .project.selected { background: #24324a; border-color: #3d5680; }
+.muted { color: #8c98aa; font-size: 13px; } .error { color: #ff9b9b; margin-top: 16px; font-size: 13px; }
+.task-form { display: flex; gap: 10px; margin: 28px 0; } input { flex: 1; padding: 11px 13px; border: 1px solid #303b4d; border-radius: 8px; color: inherit; background: #171e2a; outline: none; } input:focus { border-color: #7aa2f7; }
+.task-form button, .section-heading > button { padding: 10px 14px; } .task-list { display: grid; gap: 10px; } .task-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px; border: 1px solid #293445; border-radius: 10px; background: #171e2a; } .task-card strong { font-size: 14px; font-weight: 600; } .task-card .muted { margin-top: 7px; font-family: ui-monospace, monospace; font-size: 11px; }
+.status { padding: 5px 9px; border-radius: 999px; font-size: 11px; text-transform: capitalize; color: #b9c7db; background: #273244; }

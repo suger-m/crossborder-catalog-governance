@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+runtime/
+desktop/node_modules/
+desktop/dist/
+desktop/dist-electron/
+desktop/release/
+*.log
+.env
+.superpowers/
