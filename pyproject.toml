@@ -21,7 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 agents = ["camel-ai>=0.2.70,<0.3"]
 vector = ["lancedb>=0.17,<1"]
-dev = ["pytest>=8,<9", "pyinstaller>=6,<7"]
+dev = ["pytest>=8,<9", "pyinstaller>=6,<7", "reportlab>=4,<5"]
 
 [project.scripts]
 crossborder-cowork = "crossborder_cowork.app:main"

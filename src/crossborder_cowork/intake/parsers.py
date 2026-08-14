@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import json
 import mimetypes
+import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -36,6 +38,9 @@ FIELD_ALIASES = {
     "certifications": "certifications", "certification": "certifications", "认证": "certifications"
 }
 
+KNOWN_FIELDS = set(FIELD_ALIASES.values())
+IDENTITY_FIELDS = {"product_id", "sku", "title"}
+
 
 @dataclass
 class ParsedRecord:
@@ -56,8 +61,9 @@ class ParsedDocument:
 
 
 def normalize_key(value: object) -> str:
-    raw = str(value or "").strip()
-    return FIELD_ALIASES.get(raw.casefold(), raw.casefold().replace(" ", "_").replace("-", "_"))
+    raw = unicodedata.normalize("NFKC", str(value or "")).strip()
+    folded = re.sub(r"\s+", " ", raw).casefold()
+    return FIELD_ALIASES.get(folded, folded.replace(" ", "_").replace("-", "_"))
 
 
 def normalize_row(row: dict[Any, Any]) -> dict[str, Any]:
@@ -67,10 +73,15 @@ def normalize_row(row: dict[Any, Any]) -> dict[str, Any]:
             continue
         normalized = normalize_key(key)
         if isinstance(value, str):
-            value = value.strip()
+            value = unicodedata.normalize("NFKC", value).strip()
         if value not in (None, ""):
             result[normalized] = value
     return result
+
+
+def is_catalog_record(values: dict[str, Any]) -> bool:
+    fields = set(values).intersection(KNOWN_FIELDS)
+    return bool(fields.intersection(IDENTITY_FIELDS) and fields.difference(IDENTITY_FIELDS))
 
 
 def row_text(row: dict[str, Any]) -> str:
@@ -89,7 +100,8 @@ def parse_document(path: Path) -> ParsedDocument:
         with path.open("r", encoding="utf-8-sig", newline="") as stream:
             for index, raw in enumerate(csv.DictReader(stream), start=2):
                 values = normalize_row(raw)
-                records.append(ParsedRecord(values, document_id, path.name, f"row:{index}", row_text(values)))
+                if is_catalog_record(values):
+                    records.append(ParsedRecord(values, document_id, path.name, f"row:{index}", row_text(values)))
     elif suffix in {".xlsx", ".xlsm"}:
         workbook = load_workbook(path, read_only=True, data_only=True)
         for sheet in workbook.worksheets:
@@ -99,7 +111,7 @@ def parse_document(path: Path) -> ParsedDocument:
                 continue
             for index, values_raw in enumerate(rows, start=2):
                 values = normalize_row(dict(zip(headers, values_raw)))
-                if values:
+                if is_catalog_record(values):
                     records.append(ParsedRecord(values, document_id, path.name, f"sheet:{sheet.title};row:{index}", row_text(values)))
     elif suffix == ".json":
         payload = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -107,20 +119,21 @@ def parse_document(path: Path) -> ParsedDocument:
         for index, raw in enumerate(items, start=1):
             if isinstance(raw, dict):
                 values = normalize_row(raw)
-                records.append(ParsedRecord(values, document_id, path.name, f"item:{index}", row_text(values)))
+                if is_catalog_record(values):
+                    records.append(ParsedRecord(values, document_id, path.name, f"item:{index}", row_text(values)))
     elif suffix == ".pdf":
         page_texts: list[str] = []
         for page_number, page in enumerate(PdfReader(str(path)).pages, start=1):
             text = page.extract_text() or ""
             page_texts.append(text)
             values = _parse_key_value_text(text)
-            if values:
+            if is_catalog_record(values):
                 records.append(ParsedRecord(values, document_id, path.name, f"page:{page_number}", text[:4000]))
         document_text = "\n".join(page_texts)
     elif suffix in {".md", ".markdown", ".txt"}:
         document_text = path.read_text(encoding="utf-8-sig")
         values = _parse_key_value_text(document_text)
-        if values:
+        if is_catalog_record(values):
             records.append(ParsedRecord(values, document_id, path.name, "document", document_text[:4000]))
     elif suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
         document_text = path.name

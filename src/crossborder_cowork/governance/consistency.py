@@ -8,6 +8,7 @@ from ..catalog.models import CanonicalProduct
 from ..compliance.us_apparel import ComplianceResult
 from ..platforms.base import ListingDraft
 from ..util import stable_id
+from .import_validation import validate_ebay_draft, validate_shopify_draft
 
 
 class GovernanceFinding(BaseModel):
@@ -60,6 +61,8 @@ def review_catalog(products: list[CanonicalProduct], compliance: list[Compliance
         ebay_origin = right.data.get("itemSpecifics", {}).get("Country/Region of Manufacture", "")
         if shopify_origins != {product.country_of_origin} or ebay_origin != product.country_of_origin:
             findings.append(_finding(product.id, "blocking", "country_of_origin", "Channel origin facts do not match the canonical product.", ["shopify", "ebay_us"]))
+        for issue in [*validate_shopify_draft(left), *validate_ebay_draft(right)]:
+            findings.append(_finding(product.id, "blocking", issue.field, issue.message, [issue.platform]))
     if pending_approvals:
         findings.append(_finding("catalog", "confirmation", "approval", f"{pending_approvals} Human Approval request(s) remain pending.", []))
     if any(item.severity == "blocking" for item in findings):

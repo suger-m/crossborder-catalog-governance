@@ -54,6 +54,16 @@ class ArtifactService:
         dependencies: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict:
+        source_sha256, source_size = sha256_file(source)
+        existing = self.db.fetchone(
+            """SELECT * FROM artifacts WHERE task_id=? AND worker_name=? AND artifact_type=?
+               AND title=? AND sha256=? AND size_bytes=? ORDER BY created_at DESC LIMIT 1""",
+            (task_id, worker_name, artifact_type, title, source_sha256, source_size),
+        )
+        if existing:
+            existing["dependency_ids"] = json_loads(existing.pop("dependency_ids_json"), [])
+            existing["metadata"] = json_loads(existing.pop("metadata_json"), {})
+            return existing
         artifact_id = new_id("art")
         file_name = f"{safe_name(source.stem)}-{artifact_id[-8:]}{source.suffix.lower()}"
         path = self._task_root(task_id) / file_name

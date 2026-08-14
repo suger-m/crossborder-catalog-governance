@@ -111,6 +111,14 @@ npm run build
 
 The integration fixture contains two products, eight SKUs, conflicting country-of-origin evidence, and missing fiber content. The test confirms both Human Approval paths and verifies that Shopify and eBay outputs preserve the same SKU, size, material, and origin facts.
 
+Production-realistic acceptance uses a pinned CC0-1.0 public dress image plus a generated supplier XLSX, searchable PDF, JSON metadata, and image source file:
+
+```powershell
+python -m pytest tests/test_catalog_listing_integration.py tests/test_production_scenario_acceptance.py -q --color=no --tb=short
+```
+
+This acceptance covers dirty field formats, multi-file fact merging, approval reruns, channel import constraints, Artifact hashes, and listing-package integrity. It is not a substitute for importing the generated files into a real Shopify development store and an eBay Sandbox account.
+
 ## Packaging
 
 Windows, from Windows:

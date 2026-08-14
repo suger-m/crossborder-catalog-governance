@@ -23,12 +23,15 @@
 
 **Files:**
 - Create: `tests/fixtures/womenswear-us-realistic/build_fixture.py`
+- Create: `tests/fixtures/womenswear-us-realistic/cc0-dress.jpg`
+- Create: `tests/fixtures/womenswear-us-realistic/SOURCE.md`
 - Modify: `pyproject.toml`
 
 **Interfaces:**
 - Produces: `build_fixture(target: Path) -> list[Path]` returning an XLSX, PDF, JSON, and PNG input bundle.
 
-- [ ] Generate two products and at least ten real variant rows in a multi-sheet XLSX using Chinese and English field aliases.
+- [ ] Pin a CC0-1.0 dress image to an immutable Clothing Dataset Small commit with URL and SHA-256 provenance.
+- [ ] Generate two womenswear products and at least ten enriched variant rows in a multi-sheet XLSX using Chinese and English field aliases.
 - [ ] Include full-width values, currency symbols, inventory units, blank optional cells, images, claims, and certifications.
 - [ ] Generate a searchable PDF with product-level facts and a deliberate origin conflict.
 - [ ] Generate JSON product-level media/certification facts and a valid PNG source file.

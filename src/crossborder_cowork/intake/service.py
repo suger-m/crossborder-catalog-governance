@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import defaultdict
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -20,12 +22,58 @@ PRODUCT_FIELDS = {
     "care_instructions", "country_of_origin", "manufacturer", "claims", "certifications", "images", "tags",
 }
 CONFLICT_FIELDS = {"country_of_origin", "fiber_content", "manufacturer"}
+VARIANT_FIELDS = {"sku", "color", "size", "barcode", "price", "inventory"}
+COUNTRY_ALIASES = {
+    "china": "China", "cn": "China", "prc": "China", "people's republic of china": "China", "中国": "China",
+    "vietnam": "Vietnam", "viet nam": "Vietnam", "vn": "Vietnam", "越南": "Vietnam",
+}
 
 
 def split_values(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
     return [item.strip() for item in re.split(r"[,;，；|]", str(value or "")) if item.strip()]
+
+
+def normalize_country(value: Any) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).strip()
+    return COUNTRY_ALIASES.get(text.casefold(), text)
+
+
+def normalize_price(value: Any) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).strip()
+    if not text:
+        return ""
+    match = re.search(r"-?\d[\d,]*(?:\.\d+)?", text)
+    if not match:
+        return text
+    try:
+        amount = Decimal(match.group(0).replace(",", ""))
+    except InvalidOperation:
+        return text
+    return format(amount, "f")
+
+
+def normalize_inventory(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    text = unicodedata.normalize("NFKC", str(value)).strip()
+    match = re.search(r"-?\d[\d,]*", text)
+    if not match:
+        return None
+    quantity = int(match.group(0).replace(",", ""))
+    return quantity if quantity >= 0 else None
+
+
+def _comparison_key(field: str, value: Any) -> Any:
+    if field == "country_of_origin":
+        return normalize_country(value).casefold()
+    text = unicodedata.normalize("NFKC", str(value or "")).strip().casefold()
+    if field == "fiber_content":
+        pairs = re.findall(r"(\d+(?:\.\d+)?)\s*%\s*([^,;/，；|]+)", text)
+        if pairs:
+            return tuple(sorted((Decimal(amount), re.sub(r"\s+", " ", material).strip()) for amount, material in pairs))
+    return re.sub(r"\s+", " ", text)
 
 
 class IntakeService:
@@ -65,17 +113,18 @@ class IntakeService:
             for field, value in record.values.items():
                 if field not in PRODUCT_FIELDS:
                     continue
-                fact = self._fact(product_id, field, value, record)
+                canonical_value = normalize_country(value) if field == "country_of_origin" else value
+                fact = self._fact(product_id, field, canonical_value, record)
                 facts.append(fact)
-                field_values[field].append((value, fact))
+                field_values[field].append((canonical_value, fact))
 
         resolved: dict[str, Any] = {}
         conflicts: list[CatalogConflict] = []
         for field, values in field_values.items():
             unique: list[Any] = []
             for value, _ in values:
-                normalized = tuple(split_values(value)) if field in LIST_FIELDS else str(value).strip().casefold()
-                if not any((tuple(split_values(item)) if field in LIST_FIELDS else str(item).strip().casefold()) == normalized for item in unique):
+                normalized = tuple(split_values(value)) if field in LIST_FIELDS else _comparison_key(field, value)
+                if not any((tuple(split_values(item)) if field in LIST_FIELDS else _comparison_key(field, item)) == normalized for item in unique):
                     unique.append(value)
             if field in CONFLICT_FIELDS and len(unique) > 1:
                 conflicts.append(CatalogConflict(
@@ -91,6 +140,8 @@ class IntakeService:
         skus: list[CanonicalSku] = []
         seen_skus: set[str] = set()
         for record in records:
+            if not any(record.values.get(field) not in (None, "") for field in VARIANT_FIELDS):
+                continue
             color = str(record.values.get("color") or "").strip()
             size = str(record.values.get("size") or "").strip()
             sku_external = str(record.values.get("sku") or f"{external_id}-{color or 'NA'}-{size or 'NA'}").strip()
@@ -98,17 +149,16 @@ class IntakeService:
             if sku_id in seen_skus:
                 continue
             seen_skus.add(sku_id)
-            inventory_raw = record.values.get("inventory")
-            try:
-                inventory = int(inventory_raw) if inventory_raw not in (None, "") else None
-            except (TypeError, ValueError):
-                inventory = None
             skus.append(CanonicalSku(
                 id=sku_id, external_id=sku_external, product_id=product_id,
                 color=color, size=size, barcode=str(record.values.get("barcode") or ""),
-                price=str(record.values.get("price") or ""), inventory=inventory,
+                price=normalize_price(record.values.get("price")), inventory=normalize_inventory(record.values.get("inventory")),
                 image_urls=split_values(record.values.get("images")),
             ))
+
+        if not skus:
+            sku_external = external_id
+            skus.append(CanonicalSku(id=stable_id("sku", product_id, sku_external), external_id=sku_external, product_id=product_id))
 
         title = str(resolved.get("title") or external_id)
         category_text = " ".join([str(resolved.get("category") or ""), str(resolved.get("garment_type") or ""), title])
