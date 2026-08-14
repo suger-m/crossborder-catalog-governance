@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -89,11 +89,40 @@ def create_api(base_dir: Path) -> FastAPI:
                 payload.project_id,
                 payload.objective,
                 payload.input,
-                [step.model_dump() for step in payload.steps],
+                [step.model_dump() for step in payload.steps] or application.workflow.DEFAULT_STEPS,
             )
         except KeyError as error:
             raise _not_found(error) from error
         return {"task": task}
+
+    @api.post("/api/tasks/{task_id}/sources")
+    async def upload_sources(task_id: str, files: list[UploadFile] = File(...)) -> dict[str, Any]:
+        try:
+            application.tasks.get_task(task_id)
+        except KeyError as error:
+            raise _not_found(error) from error
+        task_root = application.settings.upload_dir / task_id
+        task_root.mkdir(parents=True, exist_ok=True)
+        paths: list[str] = []
+        for upload in files:
+            name = Path(upload.filename or "upload.bin").name
+            destination = task_root / name
+            destination.write_bytes(await upload.read())
+            paths.append(str(destination))
+        task = application.tasks.get_task(task_id)
+        input_data = dict(task.get("input") or {})
+        input_data["source_paths"] = paths
+        application.database.execute("UPDATE tasks SET input_json=?,updated_at=? WHERE id=?", (json_dumps(input_data), __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(), task_id))
+        return {"task_id": task_id, "source_paths": paths}
+
+    @api.post("/api/tasks/{task_id}/run")
+    def run_task(task_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            application.tasks.get_task(task_id)
+        except KeyError as error:
+            raise _not_found(error) from error
+        background_tasks.add_task(application.workflow.run_task, task_id)
+        return {"task_id": task_id, "status": "queued"}
 
     @api.get("/api/tasks/{task_id}")
     def get_task(task_id: str) -> dict[str, Any]:
@@ -108,6 +137,45 @@ def create_api(base_dir: Path) -> FastAPI:
             return {"task": application.tasks.update_status(task_id, payload.status, payload.result, payload.error)}
         except KeyError as error:
             raise _not_found(error) from error
+
+    @api.get("/api/approvals")
+    def list_approvals(task_id: str) -> dict[str, Any]:
+        try:
+            application.tasks.get_task(task_id)
+        except KeyError as error:
+            raise _not_found(error) from error
+        return {"items": application.approvals.list(task_id)}
+
+    @api.post("/api/approvals/{approval_id}/approve")
+    def approve(approval_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        approval = application.approvals.get(approval_id)
+        if not approval:
+            raise HTTPException(status_code=404, detail="Approval not found")
+        return {"task": application.workflow.approve_and_rerun(approval_id, payload or {})}
+
+    @api.post("/api/approvals/{approval_id}/reject")
+    def reject(approval_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        approval = application.approvals.decide(approval_id, "rejected", payload or {})
+        return {"approval": approval}
+
+    @api.get("/api/taxonomies")
+    def list_taxonomies() -> dict[str, Any]:
+        return {"items": application.taxonomy.list()}
+
+    @api.get("/api/graph/summary")
+    def graph_summary() -> dict[str, Any]:
+        return application.graph.store.summary()
+
+    @api.get("/api/products")
+    def list_products(task_id: str = "") -> dict[str, Any]:
+        return {"items": application.graph.list_products(task_id)}
+
+    @api.get("/api/products/{product_id}")
+    def get_product(product_id: str) -> dict[str, Any]:
+        product = application.graph.get_product(product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return product
 
     @api.get("/api/tasks/{task_id}/events")
     def poll_events(task_id: str, after: int = 0, limit: int = 200) -> dict[str, Any]:
@@ -185,6 +253,14 @@ def create_api(base_dir: Path) -> FastAPI:
     @api.put("/api/model-settings")
     def put_model_settings(payload: ModelConfigPayload) -> dict[str, Any]:
         return application.settings.save_model(payload.model_dump()).public_dict()
+
+    @api.get("/api/model-settings/readiness")
+    def model_readiness() -> dict[str, Any]:
+        return {role: application.model_runtime.readiness(role) for role in ("planner", "worker", "reviewer")}
+
+    @api.post("/api/model-settings/smoke")
+    def model_smoke() -> dict[str, Any]:
+        return {role: application.model_runtime.smoke(role) for role in ("planner", "worker", "reviewer")}
 
     api.add_api_route("/model-config", get_model_settings, methods=["GET"])
     api.add_api_route("/model-config", put_model_settings, methods=["PUT"])

@@ -1,0 +1,19 @@
+{
+  "taxonomy_id": "us-apparel-compliance",
+  "version": "v1",
+  "domain": "us-apparel-compliance",
+  "dimensions": ["requirement", "claim_risk", "certification"],
+  "nodes": [
+    {"id": "us.requirement.fiber_content", "dimension": "requirement", "label": "Fiber Content Disclosure", "severity": "blocked", "authority": "FTC Textile Fiber Products Identification Act", "source_url": "https://www.ftc.gov/legal-library/browse/rules/textile-fiber-products-identification-act-textile-rules"},
+    {"id": "us.requirement.country_origin", "dimension": "requirement", "label": "Country of Origin", "severity": "blocked", "authority": "FTC/CBP", "source_url": "https://www.ftc.gov/business-guidance/resources/threading-your-way-through-labeling-requirements-under-textile-wool-acts"},
+    {"id": "us.requirement.care_label", "dimension": "requirement", "label": "Care Instructions", "severity": "blocked", "authority": "FTC Care Labeling Rule", "source_url": "https://www.ftc.gov/legal-library/browse/rules/care-labeling-textile-wearing-apparel-certain-piece-goods"},
+    {"id": "us.requirement.manufacturer_identity", "dimension": "requirement", "label": "Manufacturer or RN Identity", "severity": "needs_confirmation", "authority": "FTC Textile Rules", "source_url": "https://www.ftc.gov/business-guidance/industry/registered-identification-number"},
+    {"id": "us.requirement.size_accuracy", "dimension": "requirement", "label": "Size Information", "severity": "needs_evidence", "authority": "Marketplace accuracy policy", "source_url": "https://www.ftc.gov/business-guidance/advertising-marketing"},
+    {"id": "us.claim.organic", "dimension": "claim_risk", "label": "Organic Claim", "severity": "needs_evidence", "synonyms": ["organic", "有机"]},
+    {"id": "us.claim.antibacterial", "dimension": "claim_risk", "label": "Antibacterial Claim", "severity": "blocked", "synonyms": ["antibacterial", "antimicrobial", "抗菌"]},
+    {"id": "us.claim.eco_friendly", "dimension": "claim_risk", "label": "Environmental Claim", "severity": "needs_evidence", "synonyms": ["eco-friendly", "sustainable", "环保", "可持续"]},
+    {"id": "us.cert.gots", "dimension": "certification", "label": "GOTS", "synonyms": ["Global Organic Textile Standard"]},
+    {"id": "us.cert.oeko_tex", "dimension": "certification", "label": "OEKO-TEX Standard 100", "synonyms": ["OEKO-TEX"]}
+  ],
+  "relations": []
+}

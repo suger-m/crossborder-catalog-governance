@@ -34,5 +34,5 @@ class EventStore:
         )
         for row in rows:
             row["payload"] = json_loads(row.pop("payload_json"), {})
+            row["worker_name"] = row["source"]
         return rows
-

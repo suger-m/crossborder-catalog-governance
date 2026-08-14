@@ -1,0 +1,25 @@
+{
+  "taxonomy_id": "shopify-product",
+  "version": "v1",
+  "domain": "shopify",
+  "dimensions": ["field", "object"],
+  "nodes": [
+    {"id": "shopify.object.product", "dimension": "object", "label": "Product"},
+    {"id": "shopify.object.variant", "dimension": "object", "label": "Variant"},
+    {"id": "shopify.field.handle", "dimension": "field", "label": "Handle", "required": true},
+    {"id": "shopify.field.title", "dimension": "field", "label": "Title", "required": true},
+    {"id": "shopify.field.body_html", "dimension": "field", "label": "Body (HTML)", "required": true},
+    {"id": "shopify.field.vendor", "dimension": "field", "label": "Vendor", "required": false},
+    {"id": "shopify.field.product_category", "dimension": "field", "label": "Product Category", "required": true},
+    {"id": "shopify.field.type", "dimension": "field", "label": "Type", "required": true},
+    {"id": "shopify.field.tags", "dimension": "field", "label": "Tags", "required": false},
+    {"id": "shopify.field.option1", "dimension": "field", "label": "Option1", "required": true},
+    {"id": "shopify.field.variant_sku", "dimension": "field", "label": "Variant SKU", "required": true},
+    {"id": "shopify.field.variant_price", "dimension": "field", "label": "Variant Price", "required": false},
+    {"id": "shopify.field.image_src", "dimension": "field", "label": "Image Src", "required": false}
+  ],
+  "relations": [
+    {"type": "REQUIRES_ATTRIBUTE", "from": "shopify.object.product", "to": "shopify.field.title"},
+    {"type": "REQUIRES_ATTRIBUTE", "from": "shopify.object.variant", "to": "shopify.field.variant_sku"}
+  ]
+}

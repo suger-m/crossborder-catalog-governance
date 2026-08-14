@@ -35,7 +35,7 @@ export const api = {
   task: (taskId: string) => request<TaskDetail>(`/api/tasks/${encodeURIComponent(taskId)}`),
   uploadSources: (taskId: string, files: File[]) => { const body = new FormData(); files.forEach((file) => body.append('files', file)); return request<{ task_id: string; source_paths: string[] }>(`/api/tasks/${encodeURIComponent(taskId)}/sources`, { method: 'POST', body }); },
   runTask: (taskId: string) => request<{ task_id: string; status: string }>(`/api/tasks/${encodeURIComponent(taskId)}/run`, { method: 'POST' }),
-  products: () => request<{ items: ProductSummary[] }>('/api/products'), product: (productId: string) => request<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
+  products: (taskId?: string) => request<{ items: ProductSummary[] }>(`/api/products${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`), product: (productId: string) => request<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
   approve: (approvalId: string, payload: Record<string, unknown>) => request<{ task: Task }>(`/api/approvals/${encodeURIComponent(approvalId)}/approve`, { method: 'POST', body: JSON.stringify(payload) }),
   reject: (approvalId: string, payload: Record<string, unknown> = {}) => request<{ approval: Approval }>(`/api/approvals/${encodeURIComponent(approvalId)}/reject`, { method: 'POST', body: JSON.stringify(payload) }),
   modelSettings: () => request<ModelSettings>('/api/model-settings'),

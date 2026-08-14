@@ -4,22 +4,24 @@
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",
+  "description": "Cross-border womenswear catalog governance workspace",
+  "author": "Cross-border Catalog Cowork",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 7777",
     "type-check": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "package": "npm run package:win",
-    "package:win": "npm run build && electron-builder --win --publish never"
+    "backend:build": "python ../scripts/build_backend.py",
+    "package:win": "npm run backend:build && npm run package:win:prepared",
+    "package:win:prepared": "npm run build && electron-builder --win --publish never",
+    "package:mac-arm64": "npm run backend:build && npm run package:mac-arm64:prepared",
+    "package:mac-arm64:prepared": "npm run build && electron-builder --mac --arm64 --publish never",
+    "package:mac-x64": "npm run backend:build && npm run package:mac-x64:prepared",
+    "package:mac-x64:prepared": "npm run build && electron-builder --mac --x64 --publish never"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.2.0",
-    "electron-builder": "^24.13.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "typescript": "^5.4.2",
-    "vite": "^5.4.11",
-    "vite-plugin-electron": "^0.29.0"
+    "react-dom": "^18.3.1"
   },
   "build": {
     "appId": "com.crossborder.catalogcowork",
@@ -30,10 +32,26 @@
     "files": [
       "dist",
       "dist-electron"
-    ]
+    ],
+    "extraResources": [
+      { "from": "resources/prebuilt", "to": "prebuilt" },
+      { "from": "../configs", "to": "configs" },
+      { "from": "../skills", "to": "skills" },
+      { "from": "../migrations", "to": "migrations" }
+    ],
+    "asar": true,
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "win": { "target": ["nsis", "zip"] },
+    "mac": { "target": ["dmg", "zip"], "category": "public.app-category.business" }
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
     "@types/react": "^18.3.31",
-    "@types/react-dom": "^18.3.7"
+    "@types/react-dom": "^18.3.7",
+    "electron": "^33.2.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.4.2",
+    "vite": "^5.4.11",
+    "vite-plugin-electron": "^0.29.0"
   }
 }

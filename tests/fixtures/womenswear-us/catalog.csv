@@ -1,0 +1,9 @@
+product_id,sku,title,description,category,garment type,materials,fiber content,care instructions,country of origin,manufacturer,color,size,price,inventory,images,tags,claims,certifications
+CB-DR-001,CB-DR-001-BLK-S,女士通勤长裙,高腰长款连衣裙，适合通勤与日常穿着。,Dresses,Maxi Dress,"Cotton,Elastane","95% Cotton, 5% Elastane",Machine wash cold,China,Northstar Apparel,Black,S,49.90,20,https://example.com/images/cb-dr-001-black.jpg,"work,casual",,
+CB-DR-001,CB-DR-001-BLK-M,女士通勤长裙,高腰长款连衣裙，适合通勤与日常穿着。,Dresses,Maxi Dress,"Cotton,Elastane","95% Cotton, 5% Elastane",Machine wash cold,China,Northstar Apparel,Black,M,49.90,18,https://example.com/images/cb-dr-001-black.jpg,"work,casual",,
+CB-DR-001,CB-DR-001-BLU-S,女士通勤长裙,高腰长款连衣裙，适合通勤与日常穿着。,Dresses,Maxi Dress,"Cotton,Elastane","95% Cotton, 5% Elastane",Machine wash cold,Vietnam,Northstar Apparel,Blue,S,49.90,15,https://example.com/images/cb-dr-001-blue.jpg,"work,casual",,
+CB-DR-001,CB-DR-001-BLU-M,女士通勤长裙,高腰长款连衣裙，适合通勤与日常穿着。,Dresses,Maxi Dress,"Cotton,Elastane","95% Cotton, 5% Elastane",Machine wash cold,Vietnam,Northstar Apparel,Blue,M,49.90,12,https://example.com/images/cb-dr-001-blue.jpg,"work,casual",,
+CB-TS-002,CB-TS-002-WHT-S,女士基础T恤,圆领短袖基础款上衣。,Women’s Tops,T-Shirt,Cotton,,Machine wash cold,Vietnam,Harbor Studio,White,S,24.90,30,https://example.com/images/cb-ts-002-white.jpg,"casual,basic",,
+CB-TS-002,CB-TS-002-WHT-M,女士基础T恤,圆领短袖基础款上衣。,Women’s Tops,T-Shirt,Cotton,,Machine wash cold,Vietnam,Harbor Studio,White,M,24.90,28,https://example.com/images/cb-ts-002-white.jpg,"casual,basic",,
+CB-TS-002,CB-TS-002-BLK-S,女士基础T恤,圆领短袖基础款上衣。,Women’s Tops,T-Shirt,Cotton,,Machine wash cold,Vietnam,Harbor Studio,Black,S,24.90,25,https://example.com/images/cb-ts-002-black.jpg,"casual,basic",,
+CB-TS-002,CB-TS-002-BLK-M,女士基础T恤,圆领短袖基础款上衣。,Women’s Tops,T-Shirt,Cotton,,Machine wash cold,Vietnam,Harbor Studio,Black,M,24.90,22,https://example.com/images/cb-ts-002-black.jpg,"casual,basic",,

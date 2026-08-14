@@ -10,6 +10,7 @@ desktop/node_modules/
 desktop/dist/
 desktop/dist-electron/
 desktop/release/
+desktop/resources/prebuilt/
 *.log
 .env
 .superpowers/

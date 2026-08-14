@@ -1,0 +1,24 @@
+{
+  "taxonomy_id": "ebay-us-fashion",
+  "version": "v1",
+  "domain": "ebay-us-fashion",
+  "dimensions": ["category", "item_specific", "listing_field", "policy"],
+  "nodes": [
+    {"id": "ebay.category.womens_dresses", "dimension": "category", "label": "Women’s Dresses", "category_id": "63861"},
+    {"id": "ebay.category.womens_tops", "dimension": "category", "label": "Women’s Tops", "category_id": "53159"},
+    {"id": "ebay.category.womens_jeans", "dimension": "category", "label": "Women’s Jeans", "category_id": "11554"},
+    {"id": "ebay.category.womens_sweaters", "dimension": "category", "label": "Women’s Sweaters", "category_id": "63866"},
+    {"id": "ebay.category.womens_activewear", "dimension": "category", "label": "Women’s Activewear", "category_id": "185082"},
+    {"id": "ebay.category.womens_coats", "dimension": "category", "label": "Women’s Coats, Jackets & Vests", "category_id": "63862"},
+    {"id": "ebay.specific.brand", "dimension": "item_specific", "label": "Brand", "required": true},
+    {"id": "ebay.specific.size_type", "dimension": "item_specific", "label": "Size Type", "required": true},
+    {"id": "ebay.specific.department", "dimension": "item_specific", "label": "Department", "required": true},
+    {"id": "ebay.specific.color", "dimension": "item_specific", "label": "Color", "required": true},
+    {"id": "ebay.specific.material", "dimension": "item_specific", "label": "Material", "required": true},
+    {"id": "ebay.specific.style", "dimension": "item_specific", "label": "Style", "required": true},
+    {"id": "ebay.field.condition", "dimension": "listing_field", "label": "Condition", "required": true},
+    {"id": "ebay.field.variations", "dimension": "listing_field", "label": "Variations", "required": false},
+    {"id": "ebay.policy.accurate_description", "dimension": "policy", "label": "Accurate description", "required": true}
+  ],
+  "relations": []
+}

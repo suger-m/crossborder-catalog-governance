@@ -7,7 +7,7 @@ from .database import Database
 from .events import EventStore
 
 
-TASK_STATUSES = {"queued", "running", "paused", "completed", "failed", "cancelled"}
+TASK_STATUSES = {"queued", "running", "waiting_approval", "blocked", "paused", "completed", "failed", "cancelled"}
 
 
 class TaskService:
@@ -93,6 +93,32 @@ class TaskService:
         updated = self.get_task(task_id)
         self.events.publish(task_id, "task.status_changed", "platform", {"task": self._task_public(updated)})
         return updated
+
+    def ensure_default_steps(self, task_id: str, steps: list[dict[str, str]]) -> list[dict[str, Any]]:
+        existing = self.db.fetchone("SELECT COUNT(*) AS count FROM task_steps WHERE task_id=?", (task_id,))
+        if existing and int(existing["count"]) > 0:
+            return self.get_task(task_id)["steps"]
+        for sequence, step in enumerate(steps, start=1):
+            self._add_step(task_id, sequence, step)
+        return self.get_task(task_id)["steps"]
+
+    def update_step(self, step_id: str, status: str, result: dict[str, Any] | None = None) -> dict[str, Any]:
+        allowed = {"queued", "running", "completed", "failed", "blocked", "waiting_approval"}
+        if status not in allowed:
+            raise ValueError(f"Invalid step status: {status}")
+        row = self.db.fetchone("SELECT * FROM task_steps WHERE id=?", (step_id,))
+        if not row:
+            raise KeyError(f"Step not found: {step_id}")
+        now = utc_now()
+        started = row.get("started_at") or (now if status == "running" else None)
+        completed = now if status in {"completed", "failed", "blocked"} else (None if status == "running" else row.get("completed_at"))
+        self.db.execute(
+            "UPDATE task_steps SET status=?,result_json=?,started_at=?,completed_at=? WHERE id=?",
+            (status, json_dumps(result or {}), started, completed, step_id),
+        )
+        task_id = row["task_id"]
+        self.events.publish(task_id, "task.step_changed", "platform", {"step_id": step_id, "status": status, "result": result or {}})
+        return self.get_task(task_id)
 
     def detail(self, task_id: str, artifacts: Any, approvals: Any) -> dict[str, Any]:
         task = self.get_task(task_id)

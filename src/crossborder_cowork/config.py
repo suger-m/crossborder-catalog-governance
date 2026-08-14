@@ -70,7 +70,7 @@ class ModelSettings:
 class Settings:
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = Path(base_dir).resolve()
-        self.runtime_dir = self.base_dir / "runtime"
+        self.runtime_dir = Path(os.getenv("CROSSBORDER_COWORK_RUNTIME_DIR") or (self.base_dir / "runtime")).resolve()
         self.data_dir = self.runtime_dir / "data"
         self.artifact_dir = self.runtime_dir / "artifacts"
         self.upload_dir = self.runtime_dir / "uploads"

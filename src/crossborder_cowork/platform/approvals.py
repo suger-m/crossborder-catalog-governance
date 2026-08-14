@@ -16,7 +16,7 @@ class ApprovalService:
         if not self.db.fetchone("SELECT id FROM tasks WHERE id=?", (task_id,)):
             raise KeyError(f"Task not found: {task_id}")
         existing = self.db.fetchone(
-            "SELECT * FROM approvals WHERE task_id=? AND approval_type=? AND payload_json=? AND status='pending'",
+            "SELECT * FROM approvals WHERE task_id=? AND approval_type=? AND payload_json=? ORDER BY created_at DESC LIMIT 1",
             (task_id, approval_type, json_dumps(payload)),
         )
         if existing:
