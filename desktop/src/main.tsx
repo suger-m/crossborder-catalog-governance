@@ -1,55 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { api, type Project, type Task } from './api';
+import { Workspace } from './pages/Project/Workspace';
 import './styles.css';
 
 function App() {
-  const [health, setHealth] = useState('checking');
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [selected, setSelected] = useState<Project | null>(null);
-  const [message, setMessage] = useState('');
-  const [objective, setObjective] = useState('');
-
-  async function refresh(projectId?: string) {
-    try {
-      await api.health();
-      setHealth('online');
-      const projectResult = await api.projects();
-      setProjects(projectResult.items);
-      const active = projectId ? projectResult.items.find((item) => item.id === projectId) : selected || projectResult.items[0];
-      setSelected(active || null);
-      setTasks(active ? (await api.tasks(active.id)).items : []);
-    } catch (error) {
-      setHealth('offline');
-      setMessage(error instanceof Error ? error.message : String(error));
-    }
-  }
-
+  const [health, setHealth] = useState('checking'); const [projects, setProjects] = useState<Project[]>([]); const [tasks, setTasks] = useState<Task[]>([]); const [selectedProject, setSelectedProject] = useState<Project | null>(null); const [selectedTask, setSelectedTask] = useState<string | null>(null); const [objective, setObjective] = useState(''); const [message, setMessage] = useState('');
+  async function refresh(projectId?: string) { try { await api.health(); setHealth('online'); const projectResult = await api.projects(); setProjects(projectResult.items); const active = projectId ? projectResult.items.find((item) => item.id === projectId) || null : selectedProject || projectResult.items[0] || null; setSelectedProject(active); const nextTasks = active ? (await api.tasks(active.id)).items : []; setTasks(nextTasks); setSelectedTask((current) => current && nextTasks.some((task) => task.id === current) ? current : nextTasks[0]?.id || null); } catch (reason) { setHealth('offline'); setMessage(reason instanceof Error ? reason.message : String(reason)); } }
   useEffect(() => { void refresh(); }, []);
-
-  async function addProject() {
-    const name = window.prompt('Project name');
-    if (!name?.trim()) return;
-    const result = await api.createProject(name.trim());
-    await refresh(result.project.id);
-  }
-
-  async function addTask(event: React.FormEvent) {
-    event.preventDefault();
-    if (!selected || !objective.trim()) return;
-    await api.createTask(selected.id, objective.trim());
-    setObjective('');
-    await refresh(selected.id);
-  }
-
-  return <div className="app-shell">
-    <header><div><p className="eyebrow">CATALOG GOVERNANCE</p><h1>Cross-border Cowork</h1></div><span className={`health ${health}`}>API {health}</span></header>
-    <main>
-      <aside><div className="section-heading"><h2>Projects</h2><button onClick={() => void addProject()}>+</button></div>{projects.map((project) => <button className={`project ${selected?.id === project.id ? 'selected' : ''}`} key={project.id} onClick={() => void refresh(project.id)}>{project.name}</button>)}{!projects.length && <p className="muted">Create a project to begin.</p>}</aside>
-      <section className="workspace"><div className="section-heading"><div><p className="eyebrow">WORKSPACE</p><h2>{selected?.name || 'Choose a project'}</h2></div><button onClick={() => void refresh(selected?.id)}>Refresh</button></div>{selected && <form className="task-form" onSubmit={(event) => void addTask(event)}><input value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="Describe a catalog task" /><button type="submit">Create task</button></form>}<div className="task-list">{tasks.map((task) => <article className="task-card" key={task.id}><div><strong>{task.objective}</strong><p className="muted">{task.id}</p></div><span className={`status ${task.status}`}>{task.status}</span></article>)}{selected && !tasks.length && <p className="muted">No tasks yet.</p>}{message && <p className="error">{message}</p>}</div></section>
-    </main>
-  </div>;
+  async function addProject() { const name = window.prompt('Project name'); if (!name?.trim()) return; try { const result = await api.createProject(name.trim()); await refresh(result.project.id); } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); } }
+  async function addTask(event: React.FormEvent) { event.preventDefault(); if (!selectedProject || !objective.trim()) return; try { const result = await api.createTask(selectedProject.id, objective.trim()); setObjective(''); await refresh(selectedProject.id); setSelectedTask(result.task.id); } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); } }
+  return <div className="app-shell"><header><div><p className="eyebrow">CATALOG GOVERNANCE</p><h1>Cross-border Cowork</h1></div><span className={`health ${health}`}>API {health}</span></header><main><aside><div className="section-heading"><h2>Projects</h2><button aria-label="New project" onClick={() => void addProject()}>+</button></div>{projects.map((project) => <button className={`project ${selectedProject?.id === project.id ? 'selected' : ''}`} key={project.id} onClick={() => void refresh(project.id)}>{project.name}</button>)}{!projects.length && <p className="muted">Create a project to begin.</p>}<div className="section-heading task-heading"><h2>Tasks</h2></div>{tasks.map((task) => <button className={`task-nav ${selectedTask === task.id ? 'selected' : ''}`} key={task.id} onClick={() => setSelectedTask(task.id)}><strong>{task.objective}</strong><span className={`status ${task.status}`}>{task.status}</span></button>)}{selectedProject && <form className="new-task" onSubmit={(event) => void addTask(event)}><input value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="New catalog task" /><button className="primary" type="submit">New task</button></form>}</aside>{selectedTask ? <Workspace taskId={selectedTask} onRefreshTasks={() => refresh(selectedProject?.id)} /> : <section className="workspace workspace-state"><h2>{selectedProject ? 'Create a catalog task' : 'Choose or create a project'}</h2><p>Tasks coordinate source intake, canonical Product facts, compliance, channel drafts, and review.</p>{message && <p className="error">{message}</p>}</section>}</main></div>;
 }
-
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

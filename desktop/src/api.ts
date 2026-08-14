@@ -1,19 +1,44 @@
 export interface Project { id: string; name: string; created_at: string; updated_at: string }
-export interface Task { id: string; project_id: string; objective: string; status: string; updated_at: string }
+export interface TaskStep { id: string; sequence: number; worker_name: string; title: string; status: string; result: Record<string, unknown> }
+export interface Task { id: string; project_id: string; objective: string; status: string; current_step?: string; input?: Record<string, unknown>; result?: TaskResult; error?: string; updated_at: string; steps?: TaskStep[] }
+export interface Artifact { id: string; worker_name: string; artifact_type: string; title: string; file_name: string; mime_type: string; size_bytes: number; created_at: string }
+export interface Approval { id: string; approval_type: string; title: string; description: string; payload: Record<string, unknown>; status: 'pending' | 'approved' | 'rejected' | string }
+export interface Finding { id: string; product_id: string; title?: string; message: string; status?: string; severity?: string; scope?: string; field?: string; platforms?: string[] }
+export interface ListingDraft { id: string; product_id: string; platform: 'shopify' | 'ebay_us' | string; title: string; description: string; category: string; derived_from_product_version: number; platform_rule_version: string; data: Record<string, unknown>; gaps: Array<{ field: string; reason: string; severity: string }> }
+export interface TaskResult { compliance?: { results?: Array<{ legal?: Finding[]; shopify?: Finding[]; ebay?: Finding[] }> }; listing?: { shopify?: ListingDraft[]; ebay?: ListingDraft[] }; governance?: { decision?: { findings?: Finding[]; status?: string; ready_for_export?: boolean } } }
+export interface TaskDetail { task: Task; events: TaskEvent[]; artifacts: Artifact[]; approvals: Approval[] }
+export interface TaskEvent { sequence: number; event_type: string; worker_name: string; payload: Record<string, unknown>; created_at: string }
+export interface ProductSummary { id: string; external_id: string; title: string; version: number; status: string; data: CanonicalProduct }
+export interface ProductDetail extends ProductSummary { graph: { nodes: GraphNode[]; edges: GraphEdge[] } }
+export interface GraphNode { id: string; node_type: string; state: string; version: number; data: Record<string, unknown> }
+export interface GraphEdge { id: string; source_id: string; target_id: string; relation_type: string }
+export interface SourceEvidence { source_document_id: string; file_name: string; location: string; text: string }
+export interface ProductFact { id: string; field_name: string; value: unknown; state: string; confidence: number; evidence: SourceEvidence }
+export interface CanonicalSku { id: string; external_id: string; color: string; size: string; barcode: string; price: string; inventory?: number; facts: ProductFact[] }
+export interface CanonicalProduct { id: string; external_id: string; title: string; description: string; category: string; garment_type: string; materials: string[]; fiber_content: string; care_instructions: string; country_of_origin: string; manufacturer: string; claims: string[]; images: string[]; tags: string[]; skus: CanonicalSku[]; facts: ProductFact[]; version: number; status: string }
+export interface ModelSettings { source: string; model_platform: string; model_type: string; api_url: string; extra_params: Record<string, unknown>; has_api_key: boolean; version: number; updated_at: string }
+export interface ModelSettingsPayload { source: string; model_platform: string; model_type: string; api_key?: string; api_url: string; extra_params: Record<string, unknown> }
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, { headers: { 'Content-Type': 'application/json' }, ...init });
+  const headers = new Headers(init?.headers);
+  if (!(init?.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
   if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
   return (await response.json()) as T;
 }
-
 export const api = {
-  health: () => request<{ status: string }>('/health'),
-  projects: () => request<{ items: Project[] }>('/api/projects'),
+  health: () => request<{ status: string }>('/health'), projects: () => request<{ items: Project[] }>('/api/projects'),
   createProject: (name: string) => request<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify({ name }) }),
   tasks: (projectId?: string) => request<{ items: Task[] }>(`/api/tasks${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`),
   createTask: (projectId: string, objective: string) => request<{ task: Task }>('/api/tasks', { method: 'POST', body: JSON.stringify({ project_id: projectId, objective }) }),
-  modelSettings: () => request<Record<string, unknown>>('/api/model-settings'),
+  task: (taskId: string) => request<TaskDetail>(`/api/tasks/${encodeURIComponent(taskId)}`),
+  uploadSources: (taskId: string, files: File[]) => { const body = new FormData(); files.forEach((file) => body.append('files', file)); return request<{ task_id: string; source_paths: string[] }>(`/api/tasks/${encodeURIComponent(taskId)}/sources`, { method: 'POST', body }); },
+  runTask: (taskId: string) => request<{ task_id: string; status: string }>(`/api/tasks/${encodeURIComponent(taskId)}/run`, { method: 'POST' }),
+  products: () => request<{ items: ProductSummary[] }>('/api/products'), product: (productId: string) => request<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
+  approve: (approvalId: string, payload: Record<string, unknown>) => request<{ task: Task }>(`/api/approvals/${encodeURIComponent(approvalId)}/approve`, { method: 'POST', body: JSON.stringify(payload) }),
+  reject: (approvalId: string, payload: Record<string, unknown> = {}) => request<{ approval: Approval }>(`/api/approvals/${encodeURIComponent(approvalId)}/reject`, { method: 'POST', body: JSON.stringify(payload) }),
+  modelSettings: () => request<ModelSettings>('/api/model-settings'),
+  saveModelSettings: (payload: ModelSettingsPayload) => request<ModelSettings>('/api/model-settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  artifactDownloadUrl: (artifactId: string) => `${baseUrl}/api/artifacts/${encodeURIComponent(artifactId)}/download`,
 };
