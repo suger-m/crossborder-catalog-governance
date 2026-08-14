@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .application import CrossborderApplication, build_application
-from .util import sha256_file
+from .util import json_dumps, sha256_file
 
 
 class ProjectCreate(BaseModel):
@@ -131,7 +131,7 @@ def create_api(base_dir: Path) -> FastAPI:
                 if events:
                     for event in events:
                         cursor = event["sequence"]
-                        yield f"id: {cursor}\nevent: {event['event_type']}\ndata: {event}\n\n"
+                        yield f"id: {cursor}\nevent: {event['event_type']}\ndata: {json_dumps(event)}\n\n"
                 else:
                     yield ": heartbeat\n\n"
                 await asyncio.sleep(1)
