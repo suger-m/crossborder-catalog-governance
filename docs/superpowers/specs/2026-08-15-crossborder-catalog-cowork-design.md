@@ -26,15 +26,16 @@
 
 ## 4. 多智能体团队
 
-- `product_catalog_agent`：读取商品资料，建立 Product/SKU/Variant 候选事实。
-- `product_classification_agent`：映射内部类目、标准类目、美国市场分类和平台类目。
-- `us_compliance_agent`：检查美国服装标签、材料、原产地、声明和必要证明。
-- `shopify_listing_agent`：生成 Shopify Product/Variant/Option 数据和导入文件。
-- `ebay_us_listing_agent`：映射 eBay 类目、Item Specifics、Variation 和 Listing 内容。
-- `localization_agent`：负责英文表达、单位转换、尺码表达和本地化内容。
-- `catalog_governance_agent`：检查跨 SKU、跨平台、跨版本的一致性。
-- `compliance_reviewer`：执行最终合规与材料完整性审核。
-- `export_agent`：整理上架包，不直接发布。
+第一版只保留四个稳定业务角色：
+
+- `catalog_steward_agent`：维护 Product/SKU/Variant 候选事实，按需加载商品接入和女性服装分类 Skills。
+- `compliance_specialist_agent`：按需加载美国服装法规、Shopify 政策和 eBay US 政策 Skills，输出相互独立的合规结论。
+- `listing_operations_agent`：按需加载英文本地化、Shopify Listing 和 eBay US Listing Skills，生成渠道草稿。
+- `governance_reviewer_agent`：检查商品事实、合规阻塞、跨平台一致性、证据、版本和发布状态。
+
+Planner、Human Approval 和文件导出属于平台能力，不作为业务 Agent。
+
+Skills 采用 Agent Skills 渐进加载机制：启动时只暴露名称和描述；Agent 判断匹配后加载完整 `SKILL.md`；脚本、参考资料和模板仅在技能执行需要时读取。
 
 ## 5. 领域模型
 
@@ -90,15 +91,14 @@
 ```text
 商品文件
 -> 文件解析和原始 Artifact
--> Product Catalog Agent 抽取候选事实
+-> Catalog Steward Agent 抽取、分类候选事实
 -> 平台归一、去重和 schema 校验
 -> 用户确认关键冲突
 -> Canonical Product Graph
--> 分类、美国合规和平台适配并行
--> Localization Agent 生成英文内容
--> Catalog Governance Agent 检查跨平台一致性
--> Compliance Reviewer 执行发布闸门
--> Export Agent 生成上架包
+-> Compliance Specialist Agent 检查美国法规和平台政策
+-> Listing Operations Agent 生成本地化 Shopify/eBay 草稿
+-> Governance Reviewer Agent 执行一致性和发布审核
+-> 平台导出工具生成上架包
 ```
 
 ## 8. Artifact 类型
@@ -137,4 +137,3 @@
 6. 检查两个渠道的商品事实是否一致。
 7. 阻止存在硬性合规问题的商品进入可发布状态。
 8. 在桌面工作空间展示任务、图谱摘要、问题和全部文件。
-

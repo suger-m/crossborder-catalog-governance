@@ -15,6 +15,8 @@
 - Canonical Product is the only authoritative product fact source.
 - US legal compliance and marketplace policy compliance remain separate.
 - LLM output cannot directly become a formal taxonomy node or graph edge without platform validation.
+- Business capability variations must be implemented as Agent Skills before adding new Agent roles.
+- Skills use progressive disclosure and may bundle scripts, references, and assets following the Agent Skills specification.
 - Medium-risk writes and future platform publication require Human Approval.
 - Do not copy demand-insight, comment-modeling, Demand Signal, Demand Cube, or Opportunity Radar code from the source repository.
 - Run only final integration tests after implementation, matching the user's requested development process.
@@ -80,52 +82,54 @@
 - [ ] Define eBay US fashion category, Item Specifics, Condition and Variation fields.
 - [ ] Reject unknown node IDs, missing taxonomy versions and evidence spans not contained in source text.
 
-### Task 4: Implement product intake and canonicalization
+### Task 4: Implement the Catalog Steward Agent and catalog Skills
 
 **Files:**
 - Create: `src/crossborder_cowork/intake/parsers.py`
 - Create: `src/crossborder_cowork/intake/service.py`
-- Create: `src/crossborder_cowork/workers/product_catalog.py`
+- Create: `src/crossborder_cowork/workers/catalog_steward.py`
 - Create: `skills/product-catalog/SKILL.md`
+- Create: `skills/womenswear-classification/SKILL.md`
 - Create: `src/crossborder_cowork/tools/product_intake.py`
 
 **Interfaces:**
 - Consumes: uploaded Excel/CSV, JSON, PDF, Markdown and image metadata.
-- Produces: `source_manifest.json`, candidate `CanonicalProduct`, candidate SKUs and a conflict list.
+- Produces: `source_manifest.json`, candidate `CanonicalProduct`, candidate SKUs, taxonomy assignments and a conflict list.
 
 - [ ] Parse tabular product fields without sending complete workbooks to the LLM.
 - [ ] Persist original files as source artifacts with SHA-256.
 - [ ] Extract candidate facts with source file, sheet/page, row and text span.
 - [ ] Normalize units, colors, sizes, materials and identifiers using taxonomy rules first.
 - [ ] Route unresolved conflicts to Human Approval instead of silently selecting a value.
+- [ ] Let `catalog_steward_agent` discover and activate product-catalog or womenswear-classification Skills instead of defining separate Agents.
 
-### Task 5: Implement classification and US compliance
+### Task 5: Implement the Compliance Specialist Agent and compliance Skills
 
 **Files:**
-- Create: `src/crossborder_cowork/workers/product_classification.py`
-- Create: `src/crossborder_cowork/workers/us_compliance.py`
+- Create: `src/crossborder_cowork/workers/compliance_specialist.py`
 - Create: `src/crossborder_cowork/compliance/us_apparel.py`
-- Create: `skills/product-classification/SKILL.md`
 - Create: `skills/us-apparel-compliance/SKILL.md`
+- Create: `skills/shopify-product-policy/SKILL.md`
+- Create: `skills/ebay-us-fashion-policy/SKILL.md`
 - Create: `src/crossborder_cowork/tools/compliance.py`
 
 **Interfaces:**
-- Produces: `classification_result.json` and `us_compliance_report.md` with statuses `pass`, `needs_evidence`, `needs_confirmation`, or `blocked`.
+- Produces: independent US legal, Shopify policy and eBay policy results with statuses `pass`, `needs_evidence`, `needs_confirmation`, or `blocked`.
 
-- [ ] Map products to formal womenswear taxonomy nodes using rules, similarity candidates and controlled LLM selection.
 - [ ] Evaluate fiber content, care instruction, origin, manufacturer/importer identity, sizing and marketing claims separately.
 - [ ] Attach every compliance finding to a product fact and rule evidence reference.
 - [ ] Block release when a hard requirement is missing or contradicted.
 - [ ] Keep platform policy findings out of the US legal compliance result.
+- [ ] Let one compliance role activate the appropriate legal or marketplace-policy Skill instead of adding a new Agent per jurisdiction or platform.
 
-### Task 6: Implement Shopify and eBay US listing adapters
+### Task 6: Implement the Listing Operations Agent and channel Skills
 
 **Files:**
 - Create: `src/crossborder_cowork/platforms/base.py`
 - Create: `src/crossborder_cowork/platforms/shopify.py`
 - Create: `src/crossborder_cowork/platforms/ebay_us.py`
-- Create: `src/crossborder_cowork/workers/shopify_listing.py`
-- Create: `src/crossborder_cowork/workers/ebay_us_listing.py`
+- Create: `src/crossborder_cowork/workers/listing_operations.py`
+- Create: `skills/product-localization-en-us/SKILL.md`
 - Create: `skills/shopify-listing/SKILL.md`
 - Create: `skills/ebay-us-listing/SKILL.md`
 
@@ -137,14 +141,12 @@
 - [ ] Record unsupported or missing platform attributes instead of fabricating values.
 - [ ] Store `derived_from_product_version` and `platform_rule_version` on every ListingDraft.
 - [ ] Do not add API credentials or platform publishing calls in the first release.
+- [ ] Let `listing_operations_agent` activate localization, Shopify, and eBay Skills independently and run Shopify/eBay drafts in parallel when dependencies permit.
 
-### Task 7: Implement localization, governance, review and export
+### Task 7: Implement the Governance Reviewer Agent and deterministic export
 
 **Files:**
-- Create: `src/crossborder_cowork/workers/localization.py`
-- Create: `src/crossborder_cowork/workers/catalog_governance.py`
-- Create: `src/crossborder_cowork/workers/compliance_reviewer.py`
-- Create: `src/crossborder_cowork/workers/export.py`
+- Create: `src/crossborder_cowork/workers/governance_reviewer.py`
 - Create: `src/crossborder_cowork/governance/consistency.py`
 - Create: `src/crossborder_cowork/export/package.py`
 - Create: `skills/catalog-governance/SKILL.md`
@@ -152,11 +154,10 @@
 **Interfaces:**
 - Produces: localized content, consistency findings, release decision and `listing_package.zip`.
 
-- [ ] Convert units, size labels and English copy without changing canonical facts.
 - [ ] Compare product, SKU, material, origin, claims and dimensions across Shopify and eBay drafts.
 - [ ] Reject stale drafts derived from superseded product versions.
 - [ ] Require reviewer status `approved` before export status becomes `ready`.
-- [ ] Package source manifest, canonical JSON, SKU matrix, compliance report, Shopify CSV, eBay JSON and review report.
+- [ ] Package source manifest, canonical JSON, SKU matrix, compliance report, Shopify CSV, eBay JSON and review report using deterministic export code rather than an Export Agent.
 
 ### Task 8: Build the desktop product workspace
 
@@ -190,10 +191,9 @@
 - Verifies the complete upload-to-export workflow.
 
 - [ ] Add one fixture containing at least two products, multiple sizes/colors, product images, one missing fiber-content value and one conflicting origin value.
-- [ ] Run the complete task through Product Catalog, Classification, US Compliance, Shopify, eBay, Governance, Reviewer and Export Agents.
+- [ ] Run the complete task through Catalog Steward, Compliance Specialist, Listing Operations and Governance Reviewer Agents, followed by deterministic export.
 - [ ] Confirm the conflicting origin creates Human Approval and the missing fiber content blocks release until resolved.
 - [ ] Confirm Shopify and eBay outputs contain the same SKU, material, origin and size facts.
 - [ ] Run `python -m pytest tests/test_catalog_listing_integration.py -q --color=no --tb=short` and require zero failures.
 - [ ] Run `npm run type-check` and `npm run build` in `desktop` and require exit code 0.
 - [ ] Build the Windows installer locally and configure GitHub Actions to produce macOS arm64 and x64 artifacts.
-
