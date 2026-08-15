@@ -4234,6 +4234,24 @@ button:disabled {
   background: #fffbeb;
 }
 
+.workflow-idle-preview {
+  min-height: 76px;
+  align-items: center;
+  border: 1px dashed #d7deea;
+  background: #f8fafc;
+  cursor: default;
+}
+
+.workflow-idle-preview > svg {
+  margin-top: 0;
+  color: #98a2b3;
+}
+
+.workflow-idle-preview p {
+  margin-top: 3px;
+  color: #98a2b3;
+}
+
 .workflow-browser-preview {
   background: #eff8ff;
 }

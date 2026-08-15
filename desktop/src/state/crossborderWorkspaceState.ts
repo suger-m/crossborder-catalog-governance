@@ -40,11 +40,12 @@ function fileInfo(artifact: Artifact): FileInfo {
 
 function taskInfo(step: TaskStep, artifacts: Artifact[]): TaskInfo {
   const files = artifacts.filter((artifact) => artifact.worker_name === step.worker_name).map(fileInfo);
+  const result = step.result && Object.keys(step.result).length > 0 ? JSON.stringify(step.result, null, 2) : undefined;
   return {
     id: step.id,
     content: step.title,
     status: status(step.status) as TaskInfo['status'],
-    report: step.result ? JSON.stringify(step.result, null, 2) : undefined,
+    report: result,
     fileList: files,
   };
 }

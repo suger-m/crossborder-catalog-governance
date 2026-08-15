@@ -9,6 +9,7 @@ import {
   CircleSlash2,
   Copy,
   FileText,
+  Hourglass,
   Loader2,
   Search,
   SquareChevronLeft,
@@ -100,9 +101,27 @@ function taskPreviewText(task?: WorkerTaskView) {
     fileContent(documentFile) ||
     String(task.result || '').trim() ||
     toolOutputSummary(asRecord(task.toolkits?.[0]?.output_json)) ||
-    compactJson(task.toolkits?.[0]?.output_json, 360) ||
-    task.content
+    compactJson(task.toolkits?.[0]?.output_json, 360)
   );
+}
+
+function idleWorkspaceCopy(agent: WorkerNodeView, task?: WorkerTaskView) {
+  const id = `${agent.agent_id} ${agent.name}`.toLowerCase();
+  const title = id.includes('catalog') || id.includes('steward')
+    ? 'Product / SKU workspace'
+    : id.includes('compliance')
+      ? 'Compliance workspace'
+      : id.includes('listing')
+        ? 'Listing workspace'
+        : id.includes('governance') || id.includes('review')
+          ? 'Governance workspace'
+          : 'Agent workspace';
+  const description = task?.status === 'running'
+    ? '正在执行，等待首个有效输出。'
+    : task?.status === 'failed' || task?.status === 'blocked'
+      ? '执行未完成，请查看任务状态。'
+      : '等待工作流执行到此步骤。';
+  return { title, description };
 }
 
 function terminalLines(task?: WorkerTaskView): string[] {
@@ -228,13 +247,24 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
   };
 
   const renderPreview = () => {
+    const hasPreviewOutput = Boolean(selectedPreview || selectedTerminal.length > 0);
+    if (!hasPreviewOutput) {
+      const idle = idleWorkspaceCopy(agent, selectedTask);
+      return (
+        <button className="workflow-node-preview workflow-idle-preview nodrag" onClick={selectAgent} type="button">
+          <Hourglass size={16} />
+          <div><strong>{idle.title}</strong><p>{idle.description}</p></div>
+        </button>
+      );
+    }
+
     if (kind === 'document_agent') {
       return (
         <button className="workflow-node-preview workflow-document-preview nodrag" onClick={selectAgent} type="button">
           <FileText size={16} />
           <div>
             <strong>{selectedTask?.fileList?.[0]?.name || '文档工作区'}</strong>
-            <p>{selectedPreview || '等待报告产出。'}</p>
+            <p>{selectedPreview}</p>
           </div>
         </button>
       );
@@ -244,7 +274,7 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
       return (
         <button className="workflow-node-preview workflow-terminal-preview nodrag" onClick={selectAgent} type="button">
           <TerminalSquare size={16} />
-          <pre>{selectedTerminal.length > 0 ? selectedTerminal.slice(0, 5).join('\n') : 'Eigent:~$ waiting for tool output'}</pre>
+          <pre>{selectedTerminal.slice(0, 5).join('\n')}</pre>
         </button>
       );
     }
