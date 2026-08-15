@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, FileText, Folder, PackageOpen } from 'lucide-react';
 import { api, type ProductEvent, type TaskDetail } from '../../api';
 import { ApprovalCard } from '../../components/ApprovalCard/ApprovalCard';
 import { BottomBar } from '../../components/BottomBar';
@@ -14,10 +15,70 @@ import type { CoworkInputAttachment, CoworkTask } from '../../types';
 interface Props { taskId: string; onRefreshTasks: () => Promise<void> }
 type WorkspaceId = 'workflow' | 'catalog_steward_agent' | 'compliance_specialist_agent' | 'listing_operations_agent' | 'governance_reviewer_agent' | 'documentWorkSpace';
 
+type VirtualDirectoryId = 'sources' | 'catalog' | 'compliance' | 'listings' | 'governance' | 'exports' | 'reports';
+interface VirtualDirectory { id: VirtualDirectoryId; label: string; description: string }
+const VIRTUAL_DIRECTORIES: VirtualDirectory[] = [
+  { id: 'sources', label: 'Sources', description: 'Supplier files attached to this catalog task.' },
+  { id: 'catalog', label: 'Catalog', description: 'Canonical Product/SKU facts and classification outputs.' },
+  { id: 'compliance', label: 'Compliance', description: 'US apparel and marketplace policy results.' },
+  { id: 'listings', label: 'Listings', description: 'Shopify and eBay US channel drafts.' },
+  { id: 'governance', label: 'Governance', description: 'Release decisions, reviews, and approval records.' },
+  { id: 'exports', label: 'Exports', description: 'Release-ready listing packages.' },
+  { id: 'reports', label: 'Reports', description: 'Other generated reports and supporting documents.' },
+];
+
+function artifactDirectory(artifact: TaskDetail['artifacts'][number]): VirtualDirectoryId {
+  const value = `${artifact.artifact_type} ${artifact.worker_name} ${artifact.file_name}`.toLowerCase();
+  if (value.includes('export') || value.includes('package') || value.includes('zip')) return 'exports';
+  if (value.includes('listing') || value.includes('shopify') || value.includes('ebay')) return 'listings';
+  if (value.includes('compliance') || value.includes('policy')) return 'compliance';
+  if (value.includes('governance') || value.includes('review') || value.includes('approval')) return 'governance';
+  if (value.includes('catalog') || value.includes('product') || value.includes('sku') || value.includes('taxonomy')) return 'catalog';
+  return 'reports';
+}
+
+function sourcePaths(detail: TaskDetail): string[] {
+  const paths = detail.task.input?.source_paths;
+  return Array.isArray(paths) ? paths.map(String) : [];
+}
+
+function baseName(path: string): string {
+  return path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || path;
+}
+
 function FilesWorkspace({ detail }: { detail: TaskDetail }) {
-  const [selected, setSelected] = useState<string | null>(detail.artifacts[0]?.id || null);
-  const artifact = detail.artifacts.find((item) => item.id === selected) || null;
-  return <section className="files-workspace"><div className="section-header"><div><span className="eyebrow">ARTIFACT WORKSPACE</span><h2>Files & evidence</h2></div><span className="muted">{detail.artifacts.length} artifacts</span></div><div className="files-workspace-grid"><nav className="artifact-list">{detail.artifacts.map((item) => <button key={item.id} className={item.id === selected ? 'selected' : ''} onClick={() => setSelected(item.id)}><strong>{item.title}</strong><small>{item.file_name} · {item.artifact_type}</small></button>)}{!detail.artifacts.length && <p className="muted">Artifacts will appear as workers finish.</p>}</nav>{artifact ? <article className="artifact-preview"><div className="card-heading"><div><span className="kicker">{artifact.artifact_type}</span><h3>{artifact.title}</h3></div><a className="primary" href={api.artifactDownloadUrl(artifact.id)}>Download</a></div><dl><dt>File</dt><dd>{artifact.file_name}</dd><dt>Owner</dt><dd>{artifact.worker_name}</dd><dt>Created</dt><dd>{new Date(artifact.created_at).toLocaleString()}</dd></dl><p className="notice">This artifact is sourced from the backend artifact registry. Select another file to inspect it independently.</p></article> : <div className="empty-state"><h3>Select an artifact</h3><p>Each report, evidence bundle, and export package has its own identity.</p></div>}</div></section>;
+  const sources = sourcePaths(detail);
+  const [selected, setSelected] = useState('dir:sources');
+  const selectedDirectory = VIRTUAL_DIRECTORIES.find((directory) => selected === `dir:${directory.id}`);
+  const artifact = detail.artifacts.find((item) => selected === `artifact:${item.id}`) || null;
+  const sourceIndex = selected.startsWith('source:') ? Number(selected.slice(7)) : -1;
+  const selectedSource = sourceIndex >= 0 ? sources[sourceIndex] : '';
+  const artifactsByDirectory = new Map<VirtualDirectoryId, TaskDetail['artifacts']>();
+  VIRTUAL_DIRECTORIES.forEach((directory) => artifactsByDirectory.set(directory.id, []));
+  detail.artifacts.forEach((item) => artifactsByDirectory.get(artifactDirectory(item))?.push(item));
+
+  return <section className="files-workspace">
+    <div className="section-header"><div><span className="eyebrow">ARTIFACT WORKSPACE</span><h2>Files & evidence</h2></div><span className="muted">{sources.length} sources · {detail.artifacts.length} artifacts</span></div>
+    <div className="files-workspace-grid">
+      <nav className="virtual-file-tree" aria-label="Task virtual files">
+        <div className="virtual-root"><PackageOpen size={16} /><strong>{detail.task.objective}</strong></div>
+        {VIRTUAL_DIRECTORIES.map((directory) => {
+          const files = artifactsByDirectory.get(directory.id) || [];
+          const count = directory.id === 'sources' ? sources.length : files.length;
+          return <section className="virtual-directory" key={directory.id}>
+            <button className={`virtual-directory-row ${selected === `dir:${directory.id}` ? 'selected' : ''}`} onClick={() => setSelected(`dir:${directory.id}`)}><ChevronDown size={14} /><Folder size={15} /><span>{directory.label}</span><small>{count}</small></button>
+            <div className="virtual-directory-files">
+              {directory.id === 'sources' && sources.map((path, index) => <button key={`${path}:${index}`} className={selected === `source:${index}` ? 'selected' : ''} onClick={() => setSelected(`source:${index}`)} title={path}><FileText size={14} /><span>{baseName(path)}</span></button>)}
+              {files.map((item) => <button key={item.id} className={selected === `artifact:${item.id}` ? 'selected' : ''} onClick={() => setSelected(`artifact:${item.id}`)} title={item.file_name}><FileText size={14} /><span>{item.file_name}</span></button>)}
+            </div>
+          </section>;
+        })}
+      </nav>
+      {artifact ? <article className="artifact-preview"><div className="card-heading"><div><span className="kicker">{artifact.artifact_type}</span><h3>{artifact.title}</h3></div><a className="primary" href={api.artifactDownloadUrl(artifact.id)}>Download</a></div><dl><dt>File</dt><dd>{artifact.file_name}</dd><dt>Owner</dt><dd>{artifact.worker_name}</dd><dt>Created</dt><dd>{new Date(artifact.created_at).toLocaleString()}</dd></dl><p className="notice">This file is backed by the Artifact registry and retains its own identity and download endpoint.</p></article>
+        : selectedSource ? <article className="artifact-preview"><div className="card-heading"><div><span className="kicker">SOURCE FILE</span><h3>{baseName(selectedSource)}</h3></div></div><dl><dt>Location</dt><dd>{selectedSource}</dd><dt>State</dt><dd>Attached to task input</dd></dl><p className="notice">Source files are inputs to the workflow. Generated outputs are stored separately as immutable Artifacts.</p></article>
+          : <div className="virtual-directory-preview"><Folder size={34} /><span className="kicker">VIRTUAL DIRECTORY</span><h3>{selectedDirectory?.label || 'Task files'}</h3><p>{selectedDirectory?.description || 'Select a directory or file from the tree.'}</p><strong>{selectedDirectory?.id === 'sources' ? sources.length : selectedDirectory ? artifactsByDirectory.get(selectedDirectory.id)?.length || 0 : 0} items</strong></div>}
+    </div>
+  </section>;
 }
 
 function BusinessWorkspace({ id, taskId, detail, agents }: { id: WorkspaceId; taskId: string; detail: TaskDetail; agents: Agent[] }) {
