@@ -55,6 +55,30 @@ class AgentModelRuntime:
             content = "".join(str(item.get("text") or "") if isinstance(item, dict) else str(item) for item in content)
         return json.loads(content or "{}")
 
+    def camel_model(self, role: str = "worker") -> Any:
+        """Build an in-memory CAMEL backend from the existing role settings."""
+        from camel.models import ModelFactory
+
+        config = self.settings.load_model(role)
+        readiness = self.readiness(role)
+        if not readiness["execution_enabled"]:
+            raise RuntimeError("LLM execution is disabled")
+        if not readiness["configured"]:
+            raise RuntimeError(f"LLM is not configured for role: {role}")
+        platform = config.model_platform.strip().lower().replace("_", "-")
+        aliases = {
+            "openai-compatible": "openai-compatible-model",
+            "openai-compatible-model": "openai-compatible-model",
+            "lm-studio": "lmstudio",
+        }
+        return ModelFactory.create(
+            model_platform=aliases.get(platform, platform),
+            model_type=config.model_type,
+            model_config_dict=dict(config.extra_params or {}),
+            api_key=config.api_key or None,
+            url=config.api_url or None,
+        )
+
     def smoke(self, role: str = "worker") -> dict[str, Any]:
         try:
             parsed = self.complete_json(role, "Return only JSON.", 'Return {"ok": true}.', timeout=30)

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, type ProductDetail, type ProductSummary } from '../../api';
 function value(item: unknown): string { if (Array.isArray(item)) return item.join(', ') || '—'; if (typeof item === 'object' && item !== null) return JSON.stringify(item); return String(item || '—'); }
-export function ProductGraph({ taskId }: { taskId: string }) {
+export function ProductGraph({ projectId }: { projectId: string }) {
   const [products, setProducts] = useState<ProductSummary[]>([]); const [selected, setSelected] = useState<ProductDetail | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  useEffect(() => { void (async () => { try { setLoading(true); const result = await api.products(taskId); setProducts(result.items); setSelected(result.items[0] ? await api.product(result.items[0].id) : null); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setLoading(false); } })(); }, [taskId]);
+  useEffect(() => { void (async () => { try { setLoading(true); const result = await api.projectProducts(projectId); setProducts(result.items); setSelected(result.items[0] ? await api.product(result.items[0].id) : null); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setLoading(false); } })(); }, [projectId]);
   async function select(product: ProductSummary) { try { setError(''); setSelected(await api.product(product.id)); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } }
   if (loading) return <p className="muted">正在加载规范商品…</p>;
   if (error) return <p className="error">无法加载商品图谱：{error}</p>;

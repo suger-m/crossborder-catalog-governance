@@ -1,3 +1,10 @@
-import type { ListingDraft, TaskResult } from '../../api';
-function DraftCard({ draft }: { draft: ListingDraft }) { return <article className="listing-card"><div className="card-heading"><div><span className="kicker">{draft.platform === 'shopify' ? 'SHOPIFY' : 'EBAY 美国站'} 草稿</span><h3>{draft.title}</h3></div><span className="status draft">v{draft.derived_from_product_version}</span></div><p className="muted">基于规范 Product v{draft.derived_from_product_version} 生成 · {draft.platform_rule_version}</p><dl><dt>分类</dt><dd>{draft.category || '—'}</dd><dt>描述</dt><dd>{draft.description || '—'}</dd></dl>{draft.gaps.length > 0 && <div className="listing-gaps"><strong>尚未解决的字段映射缺口</strong>{draft.gaps.map((gap) => <p key={`${gap.field}-${gap.reason}`}>{gap.field}: {gap.reason}</p>)}</div>}<details><summary>查看生成的平台数据</summary><pre>{JSON.stringify(draft.data, null, 2)}</pre></details></article>; }
-export function ListingWorkspace({ result }: { result?: TaskResult }) { const drafts = [...(result?.listing?.shopify || []), ...(result?.listing?.ebay || [])]; if (!drafts.length) return <div className="empty-state"><h3>暂无平台草稿</h3><p>商品刊登步骤完成后，Shopify 和 eBay 美国站草稿会显示在这里。规范 Product 事实是唯一事实源，因此草稿仅供查看。</p></div>; return <div><p className="notice">平台草稿来源于规范 Product 事实。如需修改商品事实，请在 Product 图谱流程中处理。</p><div className="listing-grid">{drafts.map((draft) => <DraftCard key={draft.id} draft={draft} />)}</div></div>; }
+import type { ListingDraft } from '../../api';
+
+function DraftCard({ draft }: { draft: ListingDraft }) {
+  return <article className="listing-card"><div className="card-heading"><div><span className="kicker">{draft.platform === 'shopify' ? 'SHOPIFY' : 'EBAY 美国站'} 草稿</span><h3>{draft.title}</h3></div><span className="status draft">v{draft.derived_from_product_version}</span></div><p className="muted">基于规范 Product v{draft.derived_from_product_version} 生成 · {draft.platform_rule_version}</p><dl><dt>分类</dt><dd>{draft.category || '—'}</dd><dt>描述</dt><dd>{draft.description || '—'}</dd></dl>{draft.gaps.length > 0 && <div className="listing-gaps"><strong>尚未解决的字段映射缺口</strong>{draft.gaps.map((gap) => <p key={`${gap.field}-${gap.reason}`}>{gap.field}: {gap.reason}</p>)}</div>}<details><summary>查看平台字段</summary><pre>{JSON.stringify(draft.data, null, 2)}</pre></details></article>;
+}
+
+export function ListingWorkspace({ drafts }: { drafts: ListingDraft[] }) {
+  if (!drafts.length) return <div className="empty-state"><h3>未生成平台草稿</h3><p>该智能体已完成处理，但当前项目没有可展示的 Shopify 或 eBay 美国站草稿。</p></div>;
+  return <div><p className="notice">平台草稿来源于当前项目的规范 Product 事实，修改商品事实后需要重新生成。</p><div className="listing-grid">{drafts.map((draft) => <DraftCard key={draft.id} draft={draft} />)}</div></div>;
+}

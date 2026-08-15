@@ -1,14 +1,37 @@
 export interface Project { id: string; name: string; created_at: string; updated_at: string }
 export interface ProjectMaterial { id: string; project_id: string; file_name: string; relative_path: string; mime_type: string; size_bytes: number; sha256: string; origin: 'upload' | 'example' | string; metadata: Record<string, unknown>; created_at: string }
 export interface HealthStatus { status: string; app_id: string; app_version: string; protocol_name: string; protocol_version: number }
-export interface TaskStep { id: string; sequence: number; worker_name: string; title: string; status: string; result: Record<string, unknown> }
+export interface TaskStepResult { summary?: string; key_counts?: Record<string, number>; output_resource_ids?: string[]; [key: string]: unknown }
+export interface TaskStep { id: string; sequence: number; worker_name: string; title: string; status: string; dependencies?: string[]; result: TaskStepResult }
 export interface Task { id: string; project_id: string; objective: string; status: string; current_step?: string; input?: Record<string, unknown>; result?: TaskResult; error?: string; updated_at: string; steps?: TaskStep[] }
-export interface Artifact { id: string; worker_name: string; artifact_type: string; title: string; file_name: string; mime_type: string; size_bytes: number; created_at: string }
+export interface Artifact { id: string; project_id: string; worker_name: string; process_task_id: string; artifact_type: string; title: string; file_name: string; relative_path: string; mime_type: string; size_bytes: number; sha256: string; metadata: Record<string, unknown>; created_at: string }
+export interface ArtifactPreview { artifact: Artifact; content: string | null; offset: number; next_offset: number | null; truncated: boolean }
+export interface ProjectResource {
+  id: string;
+  project_id: string;
+  resource_type: string;
+  logical_key: string;
+  version: number;
+  status: 'candidate' | 'active' | 'superseded' | 'blocked' | 'rejected' | string;
+  owner_worker_name: string;
+  source_task_id: string;
+  source_step_id: string;
+  artifact_id?: string;
+  entity_id?: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at?: string;
+}
 export interface Approval { id: string; approval_type: string; title: string; description: string; payload: Record<string, unknown>; status: 'pending' | 'approved' | 'rejected' | string }
 export interface Finding { id: string; product_id: string; title?: string; message: string; status?: string; severity?: string; scope?: string; field?: string; platforms?: string[] }
 export interface ListingDraft { id: string; product_id: string; platform: 'shopify' | 'ebay_us' | string; title: string; description: string; category: string; derived_from_product_version: number; platform_rule_version: string; data: Record<string, unknown>; gaps: Array<{ field: string; reason: string; severity: string }> }
-export interface TaskResult { compliance?: { results?: Array<{ legal?: Finding[]; shopify?: Finding[]; ebay?: Finding[] }> }; listing?: { shopify?: ListingDraft[]; ebay?: ListingDraft[] }; governance?: { decision?: { findings?: Finding[]; status?: string; ready_for_export?: boolean } } }
-export interface TaskDetail { task: Task; events: TaskEvent[]; artifacts: Artifact[]; approvals: Approval[] }
+export interface TaskResult {
+  summary?: string;
+  key_counts?: Record<string, number>;
+  output_resource_ids?: string[];
+  completed_at?: string;
+}
+export interface TaskDetail { task: Task; events: TaskEvent[]; artifacts: Artifact[]; approvals: Approval[]; resources?: ProjectResource[] }
 export interface TaskEvent { sequence: number; event_type: string; worker_name: string; payload: Record<string, unknown>; created_at: string }
 export interface ProductEvent {
   id: string;
@@ -23,6 +46,21 @@ export interface ProductEvent {
   source_event_id: string;
   source_ordinal: number;
   created_at: string;
+}
+export type AgentWorkspaceState = 'not_started' | 'running' | 'empty' | 'failed' | 'completed';
+export interface AgentWorkspace {
+  project_id: string;
+  worker_name: string;
+  state: AgentWorkspaceState;
+  steps: TaskStep[];
+  resources: ProjectResource[];
+  artifacts: Artifact[];
+  products?: ProductSummary[];
+  listings?: ListingDraft[];
+  findings?: Finding[];
+  approvals?: Approval[];
+  summary?: string;
+  error?: string;
 }
 export interface ProductSummary { id: string; external_id: string; title: string; version: number; status: string; data: CanonicalProduct }
 export interface ProductDetail extends ProductSummary { graph: { nodes: GraphNode[]; edges: GraphEdge[] } }
@@ -68,7 +106,18 @@ export const api = {
   productEvents: (taskId: string, afterSequence = 0) => request<{ items: ProductEvent[]; latest_sequence: number; protocol_name: string; protocol_version: number }>(`/api/tasks/${encodeURIComponent(taskId)}/product-events?after_sequence=${afterSequence}&protocol_version=1`),
   uploadSources: (taskId: string, files: File[]) => { const body = new FormData(); files.forEach((file) => body.append('files', file)); return request<{ task_id: string; source_paths: string[] }>(`/api/tasks/${encodeURIComponent(taskId)}/sources`, { method: 'POST', body }); },
   runTask: (taskId: string) => request<{ task_id: string; status: string }>(`/api/tasks/${encodeURIComponent(taskId)}/run`, { method: 'POST' }),
-  products: (taskId?: string) => request<{ items: ProductSummary[] }>(`/api/products${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`), product: (productId: string) => request<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
+  products: (taskId?: string) => request<{ items: ProductSummary[] }>(`/api/products${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`),
+  projectProducts: (projectId: string) => request<{ items: ProductSummary[] }>(`/api/projects/${encodeURIComponent(projectId)}/products`),
+  product: (productId: string) => request<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
+  projectResources: (projectId: string, filters: { resourceType?: string; status?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (filters.resourceType) params.set('resource_type', filters.resourceType);
+    if (filters.status) params.set('status', filters.status);
+    const query = params.size ? `?${params.toString()}` : '';
+    return request<{ items: ProjectResource[] }>(`/api/projects/${encodeURIComponent(projectId)}/resources${query}`);
+  },
+  projectListings: (projectId: string, platform = '') => request<{ items: ListingDraft[] }>(`/api/projects/${encodeURIComponent(projectId)}/listings${platform ? `?platform=${encodeURIComponent(platform)}` : ''}`),
+  agentWorkspace: (projectId: string, workerName: string) => request<AgentWorkspace>(`/api/projects/${encodeURIComponent(projectId)}/workspace/${encodeURIComponent(workerName)}`),
   approve: (approvalId: string, payload: Record<string, unknown>) => request<{ task: Task }>(`/api/approvals/${encodeURIComponent(approvalId)}/approve`, { method: 'POST', body: JSON.stringify(payload) }),
   reject: (approvalId: string, payload: Record<string, unknown> = {}) => request<{ approval: Approval }>(`/api/approvals/${encodeURIComponent(approvalId)}/reject`, { method: 'POST', body: JSON.stringify(payload) }),
   modelSettings: () => request<ModelSettings>('/api/model-settings'),
@@ -78,5 +127,6 @@ export const api = {
   skills: () => request<{ items: SkillSummary[] }>('/api/skills'),
   skill: (name: string) => request<SkillDetail>(`/api/skills/${encodeURIComponent(name)}`),
   artifactDownloadUrl: (artifactId: string) => `${baseUrl}/api/artifacts/${encodeURIComponent(artifactId)}/download`,
+  artifactPreview: (artifactId: string, offset = 0, limit = 65536) => request<ArtifactPreview>(`/api/artifacts/${encodeURIComponent(artifactId)}/preview?offset=${Math.max(0, offset)}&limit=${Math.max(1, limit)}`),
   productEventStreamUrl: (taskId: string, afterSequence = 0) => `${baseUrl}/api/tasks/${encodeURIComponent(taskId)}/product-events/stream?after_sequence=${afterSequence}&protocol_version=1`,
 };

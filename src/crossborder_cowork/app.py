@@ -34,7 +34,7 @@ class TaskStepInput(BaseModel):
 class TaskCreate(BaseModel):
     project_id: str
     objective: str
-    material_ids: list[str] = Field(min_length=1)
+    material_ids: list[str] = Field(default_factory=list)
     input: dict[str, Any] = Field(default_factory=dict)
     steps: list[TaskStepInput] = Field(default_factory=list)
 
@@ -155,16 +155,21 @@ def create_api(base_dir: Path) -> FastAPI:
     @api.post("/api/tasks", status_code=201)
     def create_task(payload: TaskCreate) -> dict[str, Any]:
         try:
-            materials = application.materials.validate_project_materials(payload.project_id, payload.material_ids)
+            materials = (
+                application.materials.validate_project_materials(payload.project_id, payload.material_ids)
+                if payload.material_ids
+                else []
+            )
             input_data = dict(payload.input)
             input_data.pop("source_paths", None)
             task = application.tasks.create_task(
                 payload.project_id,
                 payload.objective,
                 input_data,
-                [step.model_dump() for step in payload.steps] or application.workflow.DEFAULT_STEPS,
+                [step.model_dump() for step in payload.steps],
             )
-            application.materials.bind_task(task["id"], payload.project_id, [item["id"] for item in materials])
+            if materials:
+                application.materials.bind_task(task["id"], payload.project_id, [item["id"] for item in materials])
             input_data["material_ids"] = [item["id"] for item in materials]
             input_data["source_paths"] = application.materials.task_paths(task["id"])
             task = application.tasks.update_input(task["id"], input_data)
@@ -204,8 +209,14 @@ def create_api(base_dir: Path) -> FastAPI:
             paths = application.materials.task_paths(task_id)
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
-        if not paths:
-            raise HTTPException(status_code=409, detail="Select at least one project material before running the task")
+        active_resources = application.resources.list(
+            task["project_id"], statuses=("active",), limit=1,
+        )
+        if not paths and not active_resources:
+            raise HTTPException(
+                status_code=409,
+                detail="请先选择项目素材，或在项目中准备可复用的 active 资源",
+            )
         input_data = dict(task.get("input") or {})
         input_data["source_paths"] = paths
         input_data["material_ids"] = [item["id"] for item in application.materials.task_materials(task_id)]
@@ -216,7 +227,9 @@ def create_api(base_dir: Path) -> FastAPI:
     @api.get("/api/tasks/{task_id}")
     def get_task(task_id: str) -> dict[str, Any]:
         try:
-            return application.tasks.detail(task_id, application.artifacts, application.approvals)
+            return application.tasks.detail(
+                task_id, application.artifacts, application.approvals, application.resources,
+            )
         except KeyError as error:
             raise _not_found(error) from error
 
@@ -252,19 +265,132 @@ def create_api(base_dir: Path) -> FastAPI:
         return {"items": application.taxonomy.list()}
 
     @api.get("/api/graph/summary")
-    def graph_summary() -> dict[str, Any]:
-        return application.graph.store.summary()
+    def graph_summary(project_id: str) -> dict[str, Any]:
+        return application.graph.store.summary(project_id)
 
     @api.get("/api/products")
-    def list_products(task_id: str = "") -> dict[str, Any]:
-        return {"items": application.graph.list_products(task_id)}
+    def list_products(task_id: str = "", project_id: str = "") -> dict[str, Any]:
+        if not task_id and not project_id:
+            raise HTTPException(status_code=422, detail="task_id or project_id is required")
+        return {"items": application.graph.list_products(task_id=task_id, project_id=project_id)}
 
     @api.get("/api/products/{product_id}")
     def get_product(product_id: str) -> dict[str, Any]:
-        product = application.graph.get_product(product_id)
+        owner = application.database.fetchone("SELECT project_id FROM products WHERE id=?", (product_id,))
+        product = application.graph.get_product(product_id, project_id=str((owner or {}).get("project_id") or "")) if owner else None
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
         return product
+
+    @api.get("/api/projects/{project_id}/products")
+    def list_project_products(project_id: str) -> dict[str, Any]:
+        if not application.tasks.get_project(project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"items": application.graph.list_products(project_id=project_id)}
+
+    @api.get("/api/projects/{project_id}/resources")
+    def list_project_resources(
+        project_id: str,
+        resource_type: str = "",
+        status: str = "",
+    ) -> dict[str, Any]:
+        if not application.tasks.get_project(project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"items": application.resources.list(
+            project_id,
+            resource_types=(resource_type,) if resource_type else None,
+            statuses=(status,) if status else None,
+        )}
+
+    @api.get("/api/projects/{project_id}/listings")
+    def list_project_listings(project_id: str, platform: str = "") -> dict[str, Any]:
+        if not application.tasks.get_project(project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        rows = application.graph.list_listings(project_id, (platform,) if platform else None)
+        return {"items": [row.get("data", row) for row in rows]}
+
+    @api.get("/api/projects/{project_id}/workspace/{worker_name}")
+    def get_agent_workspace(project_id: str, worker_name: str) -> dict[str, Any]:
+        if not application.tasks.get_project(project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            application.workers.get(worker_name)
+        except KeyError as error:
+            raise _not_found(error) from error
+        rows = application.database.fetchall(
+            """SELECT step.id FROM task_steps step
+               JOIN tasks task ON task.id=step.task_id
+               WHERE task.project_id=? AND step.worker_name=?
+               ORDER BY task.created_at,step.sequence""",
+            (project_id, worker_name),
+        )
+        steps = [application.tasks.get_step(row["id"]) for row in rows]
+        resources = application.resources.list(project_id, owner_worker_name=worker_name)
+        artifacts = [
+            item for item in application.artifacts.list_project(project_id)
+            if item["worker_name"] == worker_name
+        ]
+        approvals = []
+        if worker_name in {"compliance_specialist_agent", "governance_reviewer_agent"}:
+            approval_rows = application.database.fetchall(
+                """SELECT approval.* FROM approvals approval
+                   JOIN tasks task ON task.id=approval.task_id
+                   WHERE task.project_id=? ORDER BY approval.created_at""",
+                (project_id,),
+            )
+            approvals = [application.approvals._decode(row) for row in approval_rows]
+        products = application.graph.list_products(project_id=project_id) if worker_name == "catalog_steward_agent" else []
+        listing_rows = application.graph.list_listings(project_id) if worker_name in {"listing_operations_agent", "governance_reviewer_agent"} else []
+        listings = [row.get("data", row) for row in listing_rows]
+        findings: list[dict[str, Any]] = []
+        if worker_name in {"compliance_specialist_agent", "governance_reviewer_agent"}:
+            artifact_types = {"compliance_result", "release_decision"}
+            active_artifact_ids = {
+                str(resource["storage_ref"])
+                for resource in resources
+                if resource.get("status") == "active" and resource.get("storage_kind") == "artifact"
+            }
+            for artifact in artifacts:
+                if artifact["artifact_type"] not in artifact_types or artifact["id"] not in active_artifact_ids:
+                    continue
+                try:
+                    parsed = json.loads(application.artifacts.read_text(
+                        artifact["id"], project_id, offset=0, limit=65_536,
+                    )["content"] or "{}")
+                except (ValueError, OSError, json.JSONDecodeError):
+                    continue
+                if artifact["artifact_type"] == "compliance_result":
+                    for result in parsed.get("results", []):
+                        for key in ("legal", "shopify", "ebay"):
+                            findings.extend(item for item in result.get(key, []) if isinstance(item, dict))
+                else:
+                    findings.extend(item for item in parsed.get("findings", []) if isinstance(item, dict))
+        latest_status = str(steps[-1].get("status") or "") if steps else ""
+        if not steps:
+            state = "completed" if resources or artifacts else "not_started"
+        elif any(str(step.get("status") or "") == "running" for step in steps):
+            state = "running"
+        elif latest_status in {"failed", "blocked"}:
+            state = "failed"
+        elif resources or artifacts or products or listings or findings:
+            state = "completed"
+        else:
+            state = "empty"
+        latest = steps[-1].get("result") if steps else {}
+        return {
+            "project_id": project_id,
+            "worker_name": worker_name,
+            "state": state,
+            "steps": steps,
+            "resources": resources,
+            "artifacts": artifacts,
+            "products": products,
+            "listings": listings,
+            "findings": findings,
+            "approvals": approvals,
+            "summary": str((latest or {}).get("summary") or ""),
+            "error": "",
+        }
 
     @api.get("/api/tasks/{task_id}/events")
     def poll_events(task_id: str, after: int = 0, limit: int = 200) -> dict[str, Any]:
@@ -367,6 +493,36 @@ def create_api(base_dir: Path) -> FastAPI:
         if digest != artifact["sha256"] or size != artifact["size_bytes"]:
             raise HTTPException(status_code=409, detail="Artifact integrity check failed")
         return FileResponse(path, media_type=artifact["mime_type"], filename=artifact["file_name"])
+
+    @api.get("/api/artifacts/{artifact_id}/preview")
+    def preview_artifact(artifact_id: str, offset: int = 0, limit: int = 65_536) -> dict[str, Any]:
+        artifact = application.artifacts.get(artifact_id)
+        if not artifact:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        mime_type = str(artifact["mime_type"]).lower()
+        text_like = mime_type.startswith("text/") or mime_type in {
+            "application/json", "application/ld+json", "application/xml",
+            "application/yaml", "application/x-yaml",
+        }
+        if not text_like:
+            application.artifacts.validated_path(artifact_id, artifact["project_id"])
+            return {
+                "artifact": artifact,
+                "content": None,
+                "offset": 0,
+                "next_offset": None,
+                "truncated": False,
+            }
+        page = application.artifacts.read_text(
+            artifact_id, artifact["project_id"], offset=offset, limit=limit,
+        )
+        return {
+            "artifact": artifact,
+            "content": page["content"],
+            "offset": page["offset"],
+            "next_offset": None if page["eof"] else page["next_offset"],
+            "truncated": not page["eof"],
+        }
 
     @api.get("/api/skills")
     def list_skills() -> dict[str, Any]:

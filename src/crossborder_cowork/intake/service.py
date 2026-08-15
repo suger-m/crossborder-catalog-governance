@@ -80,7 +80,7 @@ class IntakeService:
     def __init__(self, taxonomy: TaxonomyRegistry) -> None:
         self.taxonomy = taxonomy
 
-    def parse(self, paths: list[Path]) -> CatalogBatch:
+    def parse(self, paths: list[Path], project_id: str = "") -> CatalogBatch:
         documents = [parse_document(path) for path in paths]
         groups: dict[str, list[ParsedRecord]] = defaultdict(list)
         for document in documents:
@@ -93,7 +93,7 @@ class IntakeService:
         products: list[CanonicalProduct] = []
         conflicts: list[CatalogConflict] = []
         for external_id, records in groups.items():
-            product, product_conflicts = self._build_product(external_id, records)
+            product, product_conflicts = self._build_product(external_id, records, project_id)
             products.append(product)
             conflicts.extend(product_conflicts)
         return CatalogBatch(
@@ -105,8 +105,13 @@ class IntakeService:
             } for doc in documents],
         )
 
-    def _build_product(self, external_id: str, records: list[ParsedRecord]) -> tuple[CanonicalProduct, list[CatalogConflict]]:
-        product_id = stable_id("prod", external_id)
+    def _build_product(
+        self,
+        external_id: str,
+        records: list[ParsedRecord],
+        project_id: str = "",
+    ) -> tuple[CanonicalProduct, list[CatalogConflict]]:
+        product_id = stable_id("prod", project_id or "legacy", external_id)
         facts: list[ProductFact] = []
         field_values: dict[str, list[tuple[Any, ProductFact]]] = defaultdict(list)
         for record in records:

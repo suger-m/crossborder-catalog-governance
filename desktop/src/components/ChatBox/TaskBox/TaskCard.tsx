@@ -69,7 +69,7 @@ function fallbackProgress(status?: string) {
 
 function emptySubtaskText(status?: string) {
   if (status === 'draft' || status === 'pending' || status === 'planned') {
-    return 'Workforce 正在准备执行；如果自动启动失败，可点击「运行」重试。';
+    return '智能体团队正在准备执行；如果自动启动失败，可点击「运行」重试。';
   }
   if (status === 'waiting_approval' || status === 'waiting_human_input') {
     return '等待人工处理后，Workforce 才会继续。';
@@ -77,7 +77,7 @@ function emptySubtaskText(status?: string) {
   if (status === 'paused') return '任务已暂停，恢复后继续执行。';
   if (status === 'completed') return '任务已完成，暂无持久化的 CAMEL 子任务。';
   if (status === 'failed' || status === 'cancelled') return '没有记录到 CAMEL 子任务。';
-  return '暂无 CAMEL Workforce 子任务。';
+  return '暂无智能体子任务。';
 }
 
 function planningTaskInfo(task: CoworkTask): TaskInfo[] {

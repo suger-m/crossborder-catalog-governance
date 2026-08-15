@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Iterable, Literal
 
 from pydantic import BaseModel, Field
 
@@ -26,43 +26,79 @@ class GovernanceDecision(BaseModel):
     findings: list[GovernanceFinding] = Field(default_factory=list)
 
 
-def review_catalog(products: list[CanonicalProduct], compliance: list[ComplianceResult], shopify: list[ListingDraft], ebay: list[ListingDraft], pending_approvals: int = 0) -> GovernanceDecision:
+def review_catalog(
+    products: list[CanonicalProduct],
+    compliance: list[ComplianceResult],
+    shopify: list[ListingDraft],
+    ebay: list[ListingDraft],
+    pending_approvals: int = 0,
+    required_platforms: Iterable[str] | None = None,
+) -> GovernanceDecision:
     findings: list[GovernanceFinding] = []
+    platforms = set(required_platforms or ("shopify", "ebay_us"))
+    if not platforms or not platforms.issubset({"shopify", "ebay_us"}):
+        raise ValueError("Governance review requires Shopify and/or eBay US scope")
     compliance_by_product = {item.product_id: item for item in compliance}
     shopify_by_product = {item.product_id: item for item in shopify}
     ebay_by_product = {item.product_id: item for item in ebay}
     for product in products:
         legal = compliance_by_product.get(product.id)
         if legal:
-            for item in [*legal.legal, *legal.shopify, *legal.ebay]:
+            scoped_compliance = [*legal.legal]
+            if "shopify" in platforms:
+                scoped_compliance.extend(legal.shopify)
+            if "ebay_us" in platforms:
+                scoped_compliance.extend(legal.ebay)
+            for item in scoped_compliance:
                 if item.status == "blocked":
                     findings.append(_finding(product.id, "blocking", item.fact_field or item.rule_id, item.message, [item.scope]))
                 elif item.status == "needs_confirmation":
                     findings.append(_finding(product.id, "confirmation", item.fact_field or item.rule_id, item.message, [item.scope]))
         left = shopify_by_product.get(product.id)
         right = ebay_by_product.get(product.id)
-        if not left or not right:
-            findings.append(_finding(product.id, "blocking", "listing", "Both Shopify and eBay US drafts are required.", ["shopify", "ebay_us"]))
+        missing_platforms = [
+            platform
+            for platform, draft in (("shopify", left), ("ebay_us", right))
+            if platform in platforms and draft is None
+        ]
+        if missing_platforms:
+            findings.append(_finding(
+                product.id,
+                "blocking",
+                "listing",
+                f"Required Listing draft is missing for: {', '.join(missing_platforms)}.",
+                missing_platforms,
+            ))
             continue
-        if left.derived_from_product_version != product.version or right.derived_from_product_version != product.version:
-            findings.append(_finding(product.id, "blocking", "version", "A Listing draft was derived from a superseded product version.", [left.platform, right.platform]))
-        shopify_rows = left.data.get("rows", [])
-        shopify_skus = {row.get("Variant SKU") for row in shopify_rows}
-        ebay_skus = {variation.get("sku") for variation in right.data.get("variations", [])}
         canonical_skus = {sku.external_id for sku in product.skus}
-        if shopify_skus != canonical_skus or ebay_skus != canonical_skus:
-            findings.append(_finding(product.id, "blocking", "sku", "Channel SKU sets do not match the canonical product.", ["shopify", "ebay_us"]))
         material = ", ".join(product.materials) or product.fiber_content
-        shopify_materials = {row.get("Metafield: custom.material [single_line_text_field]", "") for row in shopify_rows}
-        ebay_material = right.data.get("itemSpecifics", {}).get("Material", "")
-        if shopify_materials != {material} or ebay_material != material:
-            findings.append(_finding(product.id, "blocking", "material", "Channel material facts do not match the canonical product.", ["shopify", "ebay_us"]))
-        shopify_origins = {row.get("Metafield: custom.country_of_origin [single_line_text_field]", "") for row in shopify_rows}
-        ebay_origin = right.data.get("itemSpecifics", {}).get("Country/Region of Manufacture", "")
-        if shopify_origins != {product.country_of_origin} or ebay_origin != product.country_of_origin:
-            findings.append(_finding(product.id, "blocking", "country_of_origin", "Channel origin facts do not match the canonical product.", ["shopify", "ebay_us"]))
-        for issue in [*validate_shopify_draft(left), *validate_ebay_draft(right)]:
-            findings.append(_finding(product.id, "blocking", issue.field, issue.message, [issue.platform]))
+        selected_drafts = [
+            draft
+            for platform, draft in (("shopify", left), ("ebay_us", right))
+            if platform in platforms and draft is not None
+        ]
+        for draft in selected_drafts:
+            if draft.derived_from_product_version != product.version:
+                findings.append(_finding(product.id, "blocking", "version", "A Listing draft was derived from a superseded product version.", [draft.platform]))
+            if draft.platform == "shopify":
+                rows = draft.data.get("rows", [])
+                if {row.get("Variant SKU") for row in rows} != canonical_skus:
+                    findings.append(_finding(product.id, "blocking", "sku", "Channel SKU set does not match the canonical product.", [draft.platform]))
+                if {row.get("Metafield: custom.material [single_line_text_field]", "") for row in rows} != {material}:
+                    findings.append(_finding(product.id, "blocking", "material", "Channel material facts do not match the canonical product.", [draft.platform]))
+                if {row.get("Metafield: custom.country_of_origin [single_line_text_field]", "") for row in rows} != {product.country_of_origin}:
+                    findings.append(_finding(product.id, "blocking", "country_of_origin", "Channel origin facts do not match the canonical product.", [draft.platform]))
+                issues = validate_shopify_draft(draft)
+            else:
+                if {variation.get("sku") for variation in draft.data.get("variations", [])} != canonical_skus:
+                    findings.append(_finding(product.id, "blocking", "sku", "Channel SKU set does not match the canonical product.", [draft.platform]))
+                if draft.data.get("itemSpecifics", {}).get("Material", "") != material:
+                    findings.append(_finding(product.id, "blocking", "material", "Channel material facts do not match the canonical product.", [draft.platform]))
+                if draft.data.get("itemSpecifics", {}).get("Country/Region of Manufacture", "") != product.country_of_origin:
+                    findings.append(_finding(product.id, "blocking", "country_of_origin", "Channel origin facts do not match the canonical product.", [draft.platform]))
+                issues = validate_ebay_draft(draft)
+            for issue in issues:
+                findings.append(_finding(product.id, "blocking", issue.field, issue.message, [issue.platform]))
     if pending_approvals:
         findings.append(_finding("catalog", "confirmation", "approval", f"{pending_approvals} Human Approval request(s) remain pending.", []))
     if any(item.severity == "blocking" for item in findings):

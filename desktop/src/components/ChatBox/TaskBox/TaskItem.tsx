@@ -12,10 +12,6 @@ interface TaskItemProps {
 }
 
 export function TaskItem({ taskInfo, taskIndex, active = false, onSelect }: TaskItemProps) {
-  const toolNames = (taskInfo.toolkits || []).map(
-    (toolkit) => toolkit.toolkitMethods || toolkit.toolkitName
-  );
-
   return (
     <button
       className={`chat-task-item ${taskInfo.status || 'pending'} ${active ? 'active' : ''}`}
@@ -34,16 +30,26 @@ export function TaskItem({ taskInfo, taskIndex, active = false, onSelect }: Task
           {taskInfo.report ? (
             <>
               <FileText size={12} />
-              报告
-            </>
-          ) : null}
-          {toolNames.length > 0 ? (
-            <>
-              <Wrench size={12} />
-              {toolNames.slice(0, 2).map(toolLabel).join('、')}
+              摘要
             </>
           ) : null}
         </small>
+        {taskInfo.progressLines?.length ? (
+          <span className="chat-task-progress-lines" aria-label="智能体工作进度">
+            {taskInfo.progressLines.map((line, index) => <i key={`${index}:${line}`}>{line}</i>)}
+          </span>
+        ) : null}
+        {taskInfo.toolkits?.length ? (
+          <span className="chat-task-tools" aria-label="工具调用">
+            {taskInfo.toolkits.map((toolkit) => (
+              <i key={toolkit.toolkitId || `${toolkit.toolkitName}:${toolkit.toolkitMethods}`}>
+                <Wrench size={11} />
+                <span>{toolLabel(toolkit.toolkitName || toolkit.toolkitMethods)}</span>
+                <b>{statusLabel(toolkit.toolkitStatus || 'pending')}</b>
+              </i>
+            ))}
+          </span>
+        ) : null}
       </span>
     </button>
   );

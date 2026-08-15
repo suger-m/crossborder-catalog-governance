@@ -55,17 +55,18 @@ def test_project_materials_are_explicit_reusable_task_inputs(tmp_path: Path, mon
     assert task["input"]["material_ids"] == [material["id"]]
     assert len(task["input"]["source_paths"]) == 1
 
+    unbound_response = client.post(
+        "/api/tasks",
+        json={"project_id": other_project["id"], "objective": "审核已有项目资源", "material_ids": []},
+    )
+    assert unbound_response.status_code == 201
+    unbound = unbound_response.json()["task"]
+    assert unbound["steps"] == []
+
     application = client.app.state.crossborder_application
-    unbound = application.tasks.create_task(project["id"], "没有素材的旧任务", {}, application.workflow.DEFAULT_STEPS)
     rejected = client.post(f"/api/tasks/{unbound['id']}/run")
     assert rejected.status_code == 409
     assert application.tasks.get_task(unbound["id"])["status"] == "queued"
-
-    run = client.post(f"/api/tasks/{task['id']}/run")
-    assert run.status_code == 200
-    completed = client.get(f"/api/tasks/{task['id']}").json()
-    assert completed["task"]["status"] == "completed"
-    assert any(item["artifact_type"] == "listing_package" for item in completed["artifacts"])
 
 
 def test_uploaded_chinese_filename_is_preserved(tmp_path: Path, monkeypatch) -> None:

@@ -19,7 +19,7 @@ The first release creates Shopify and eBay US import packages. It does not call 
 
 ## Business Agents
 
-The Workforce contains four durable roles:
+The Workforce can dynamically select one or more of four durable roles for each objective:
 
 1. `catalog_steward_agent` owns canonical Product/SKU facts and classification candidates.
 2. `compliance_specialist_agent` checks US apparel law and marketplace policy without changing product facts.
@@ -27,6 +27,8 @@ The Workforce contains four durable roles:
 4. `governance_reviewer_agent` checks blockers, evidence, versions, channel consistency, and export readiness.
 
 Planner, Human Approval, Artifact/Event persistence, schema validation, graph writes, CSV/JSON/XLSX formatting, hashing, and ZIP creation are platform capabilities. Platform and market variations are loaded as Agent Skills from `skills/` rather than being implemented as extra Agents.
+
+CAMEL Workforce receives a compact manifest of project-owned resources, decomposes the objective into the minimum necessary task graph, and assigns each task by role capability. A review-only objective can run only `governance_reviewer_agent`; a full delivery objective can run Catalog first, Compliance and Listing in parallel, and Governance after their outputs are available. Complete business payloads never pass through CAMEL result strings.
 
 ## Development setup
 
@@ -53,7 +55,7 @@ npm run dev
 
 The desktop starts `python -m crossborder_cowork.app` automatically. Electron assigns an isolated loopback API port for this application instance, validates the backend identity and Product Event protocol, then opens the Vite UI on `http://127.0.0.1:7777`. This avoids connecting to an older process that happens to occupy port 8000.
 
-The desktop workspace follows the same native workspace pattern as the reference cowork application: projects and tasks live in the history rail, the task workspace receives a versioned Eigent product-event stream, and Product/SKU, compliance, Listing, approval, and Artifact panels read the backend task snapshot. The UI does not parse log text or maintain a second business state source.
+The desktop workspace follows the same native workspace pattern as the reference cowork application: projects and tasks live in the history rail, the task workspace receives a versioned Eigent product-event stream, and Product/SKU, compliance, Listing, approval, and Artifact panels read project-owned backend resources. The UI does not parse log text, synthesize tool calls, or maintain a second business state source.
 
 To run only the backend:
 
@@ -63,7 +65,7 @@ python -m crossborder_cowork.app
 
 ## Model configuration
 
-The system works deterministically without a model. When an OpenAI-compatible model is configured, business Agents may use it for constrained language work such as en-US localization; deterministic validation remains authoritative and failures fall back safely.
+Task execution requires a configured OpenAI-compatible model because native CAMEL Workforce uses it to decompose the objective, select the necessary Agent roles, and establish dependencies. Business Tools remain deterministic, and model output cannot bypass taxonomy, graph, evidence, authorization, or release-state validation.
 
 Desktop settings take precedence over environment variables. Environment fallback order matches the existing cowork project:
 
@@ -84,24 +86,21 @@ LLM_BASE_URL=https://api.example.com/v1
 LLM_TEMPERATURE=0.1
 ```
 
-Set `CROSSBORDER_DISABLE_LLM=1` to force deterministic execution. API responses never return the configured API key.
+Set `CROSSBORDER_DISABLE_LLM=1` only when inspecting data or running platform-only diagnostics; Workforce tasks will reject execution while model access is disabled. API responses never return the configured API key.
 
 ## Workflow
 
 ```text
 Create project (no task is created automatically)
 → upload project materials or explicitly import the sample catalog
-→ select one or more materials and enter a task objective
-→ create and run the governance task
-→ Source product files
-→ Catalog Steward: parse, normalize, classify, detect conflicts
-→ platform schema/taxonomy/evidence validation
-→ Human Approval for conflicts or missing required facts
-→ Canonical Product/SKU Graph
-→ Compliance Specialist: US law + Shopify/eBay policy checks
-→ Listing Operations: en-US Shopify/eBay drafts
-→ Governance Reviewer: consistency, versions, blockers, release readiness
-→ deterministic listing_package.zip export
+→ enter an objective and optionally select materials or existing resources
+→ CAMEL Workforce reads the compact project resource manifest
+→ dynamically create and assign only the necessary 1..N Agent tasks
+→ Agents read Product/Fact/Listing/Artifact data on demand through authorized Tools
+→ platform schema/taxonomy/evidence validation remains authoritative
+→ Human Approval persists conflicts or missing facts and creates a new resource version
+→ Agent outputs become project resources and independently addressable Artifacts
+→ Governance creates listing_package.zip only when the requested delivery is ready
 ```
 
 ## 使用方法
@@ -109,8 +108,8 @@ Create project (no task is created automatically)
 1. 点击左侧项目区的 `+`，输入项目名称。项目创建后会直接进入项目首页，不会自动创建任务。
 2. 在“项目素材库”上传供应商的 CSV、Excel、JSON、PDF、Markdown、文本或图片资料。素材属于项目，可被多个任务复用。
 3. 没有真实资料时，可点击“导入示例数据”。该操作只在用户点击后执行，不会向新项目自动注入示例。示例源文件位于 `examples/womenswear-us/womenswear-catalog.csv`。
-4. 勾选本次任务要使用的素材，输入治理目标，再点击“创建并运行任务”。未选择素材时平台不会创建或执行任务。
-5. 任务工作区左侧查看四个业务智能体的执行进度，底部切换商品图谱、合规、Listing 和文件区。点击左上角返回按钮可回到项目素材库。
+4. 首次构建商品目录时勾选素材并输入目标；后续合规检查、Listing 生成或审核任务可以不选新素材，直接复用当前项目的 active 资源。
+5. 任务工作区左侧查看 Workforce 动态生成的任务计划、逐条工作摘要和真实工具状态；未参与本次任务的智能体会明确显示“尚未执行”。底部可切换各智能体和文件工作区。
 6. 如果任务要求人工确认，在审批卡片中处理冲突或补齐必要事实。审核通过后，在文件区下载 Shopify CSV、eBay JSON 和最终 `listing_package.zip`。
 
 项目素材与任务生成文件是两类数据：素材是项目级、可复用的输入；Artifact 是任务级、不可变的输出。选择素材创建任务时，平台会保存材料绑定并校验文件哈希，任务不会依赖临时浏览器附件。
@@ -120,7 +119,7 @@ Create project (no task is created automatically)
 Run only after the complete feature set is implemented:
 
 ```powershell
-python -m pytest tests/test_project_material_workflow.py tests/test_catalog_listing_integration.py tests/test_production_scenario_acceptance.py -q --color=no --tb=short
+python -m pytest -q --color=no --tb=short
 cd desktop
 npm run type-check
 npm run build

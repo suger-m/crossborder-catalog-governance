@@ -12,6 +12,10 @@ from ..platforms.ebay_us import build_ebay_draft
 from ..platforms.shopify import build_shopify_draft, shopify_csv
 from ..util import json_dumps, utc_now
 from ..platform.model_runtime import AgentModelRuntime
+from ..platform.execution_context import ExecutionContext
+from ..platform.project_context import ProjectContextService
+from ..platform.resources import ProjectResourceService
+from ..platform.tool_executor import ToolExecutor
 from ..graph.service import CatalogGraphService
 from ..graph.models import GraphNode, GraphEdge
 from ..util import stable_id
@@ -21,13 +25,170 @@ class ListingOperationsAgent:
     name = "listing_operations_agent"
     description = "基于规范商品版本生成本地化的 Shopify 和 eBay 美国站草稿。"
 
-    def __init__(self, db: Database, artifacts: ArtifactService, events: EventStore, skills: SkillRegistry, model_runtime: AgentModelRuntime, graph: CatalogGraphService) -> None:
+    def __init__(
+        self,
+        db: Database,
+        artifacts: ArtifactService,
+        events: EventStore,
+        skills: SkillRegistry,
+        model_runtime: AgentModelRuntime,
+        graph: CatalogGraphService,
+        project_context: ProjectContextService | None = None,
+        resources: ProjectResourceService | None = None,
+        tool_executor: ToolExecutor | None = None,
+    ) -> None:
         self.db = db
         self.artifacts = artifacts
         self.events = events
         self.skills = skills
         self.model_runtime = model_runtime
         self.graph = graph
+        self.project_context = project_context
+        self.resources = resources
+        self.tool_executor = tool_executor
+
+    def run_for_workforce(
+        self,
+        context: ExecutionContext,
+        task_content: str,
+        dependencies: list[Any],
+    ) -> dict[str, Any]:
+        if not self.project_context or not self.resources or not self.tool_executor:
+            raise RuntimeError("Listing Operations Workforce services are not configured")
+        platforms = _platform_scope(task_content)
+        skill_names = ["product-localization-en-us"]
+        if "shopify" in platforms:
+            skill_names.append("shopify-listing")
+        if "ebay_us" in platforms:
+            skill_names.append("ebay-us-listing")
+        selected_skills = [self.skills.get(name) for name in skill_names]
+        for skill in selected_skills:
+            skill.load()
+        self._progress(context, "正在读取规范商品版本并确认平台草稿输入。", "input_resolution")
+        resolution = self.project_context.resolve_inputs(
+            context,
+            resource_types=("product_collection", "canonical_product"),
+        )
+        if resolution["no_input"]:
+            raise ValueError("没有可用于生成平台草稿的规范商品资源")
+        products_raw = self.tool_executor.execute(
+            "get_canonical_products",
+            context,
+            self.project_context.get_canonical_products,
+            context,
+            resource_ids=resolution["resource_ids"],
+        )
+        product_models = [CanonicalProduct.model_validate(item.get("data", item)) for item in products_raw]
+        platform_label = " 与 ".join(
+            label for platform, label in (("shopify", "Shopify"), ("ebay_us", "eBay 美国站"))
+            if platform in platforms
+        )
+        self._progress(context, f"正在为 {len(product_models)} 个商品生成 {platform_label} 草稿。", "draft_generation")
+
+        def build_drafts() -> tuple[list, list]:
+            return (
+                [build_shopify_draft(product) for product in product_models] if "shopify" in platforms else [],
+                [build_ebay_draft(product) for product in product_models] if "ebay_us" in platforms else [],
+            )
+
+        shopify, ebay = self.tool_executor.execute(
+            "generate_listing_drafts", context, build_drafts,
+        )
+        self._enhance_localization(context.task_id, product_models, shopify, ebay, context)
+
+        def persist_drafts() -> None:
+            now = utc_now()
+            for draft in [*shopify, *ebay]:
+                self.db.execute(
+                    """INSERT INTO listings(
+                           id,project_id,process_task_id,product_id,platform,version,
+                           derived_from_product_version,platform_rule_version,status,
+                           data_json,created_at,updated_at
+                       ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,
+                           process_task_id=excluded.process_task_id,status=excluded.status,
+                           data_json=excluded.data_json,updated_at=excluded.updated_at""",
+                    (
+                        draft.id, context.project_id, context.process_task_id, draft.product_id,
+                        draft.platform, 1, draft.derived_from_product_version,
+                        draft.platform_rule_version, draft.status,
+                        json_dumps(draft.model_dump()), now, now,
+                    ),
+                )
+                platform_id = stable_id("platform", context.project_id, draft.platform)
+                self.graph.add_node(
+                    GraphNode(id=platform_id, node_type="Platform", state="confirmed", data={"name": draft.platform}),
+                    context.project_id,
+                )
+                self.graph.add_node(
+                    GraphNode(id=draft.id, node_type="Listing", data={"platform": draft.platform, "status": draft.status, "version": 1}),
+                    context.project_id,
+                )
+                self.graph.add_edge(
+                    GraphEdge(id=stable_id("edge", context.project_id, draft.id, "DERIVED_FROM", draft.product_id), source_id=draft.id, relation_type="DERIVED_FROM", target_id=draft.product_id),
+                    context.project_id,
+                )
+                self.graph.add_edge(
+                    GraphEdge(id=stable_id("edge", context.project_id, draft.product_id, "LISTED_ON", platform_id), source_id=draft.product_id, relation_type="LISTED_ON", target_id=platform_id),
+                    context.project_id,
+                )
+
+        self.tool_executor.execute("write_listing_graph", context, persist_drafts)
+        output_resource_ids: list[str] = []
+        if shopify:
+            shopify_resource = self.resources.create(
+                project_id=context.project_id, resource_type="listing_draft", logical_key="shopify",
+                owner_worker_name=self.name, source_task_id=context.task_id,
+                source_step_id=context.process_task_id, storage_kind="database", storage_ref="shopify",
+                status="active", metadata={"platform": "shopify", "listing_ids": [item.id for item in shopify]},
+            )
+            shopify_artifact = self.artifacts.create_text(
+                context.task_id, self.name, "shopify_listing", "shopify_listing", content=shopify_csv(shopify),
+                extension="csv", mime_type="text/csv", dependencies=resolution["resource_ids"],
+            )
+            output_resource_ids.extend([shopify_resource["id"], shopify_artifact["resource_id"]])
+        if ebay:
+            ebay_resource = self.resources.create(
+                project_id=context.project_id, resource_type="listing_draft", logical_key="ebay_us",
+                owner_worker_name=self.name, source_task_id=context.task_id,
+                source_step_id=context.process_task_id, storage_kind="database", storage_ref="ebay_us",
+                status="active", metadata={"platform": "ebay_us", "listing_ids": [item.id for item in ebay]},
+            )
+            ebay_artifact = self.artifacts.create_text(
+                context.task_id, self.name, "ebay_listing", "ebay_listing",
+                content=json_dumps({"listings": [draft.model_dump() for draft in ebay]}),
+                extension="json", mime_type="application/json", dependencies=resolution["resource_ids"],
+            )
+            output_resource_ids.extend([ebay_resource["id"], ebay_artifact["resource_id"]])
+        localization = self.artifacts.create_text(
+            context.task_id, self.name, "localization_notes", "localization_notes",
+            content=_localization_markdown(shopify, ebay), extension="md", mime_type="text/markdown",
+            dependencies=resolution["resource_ids"],
+        )
+        gap_count = sum(len(item.gaps) for item in [*shopify, *ebay])
+        total_resources = len(output_resource_ids) + 1
+        summary = (
+            f"已生成 {len(shopify)} 份 Shopify 草稿和 {len(ebay)} 份 eBay 美国站草稿，"
+            f"形成 {total_resources} 项可复用资源，保留 {gap_count} 项缺失字段。"
+        )
+        self._progress(context, summary, "completed")
+        return {
+            "summary": summary,
+            "key_counts": {
+                "shopify": len(shopify), "ebay_us": len(ebay),
+                "output_resources": total_resources, "gaps": gap_count,
+            },
+            "output_resource_ids": [*output_resource_ids, localization["resource_id"]],
+            "status": "completed",
+        }
+
+    def _progress(self, context: ExecutionContext, message: str, phase: str) -> None:
+        self.events.publish(context.task_id, "agent.progress", self.name, {
+            "worker_name": self.name,
+            "process_task_id": context.process_task_id,
+            "message": message,
+            "phase": phase,
+        })
 
     def run(self, task_id: str, products: list[dict[str, Any]], dependencies: list[str]) -> dict[str, Any]:
         selected_skills = [self.skills.get(name) for name in ("product-localization-en-us", "shopify-listing", "ebay-us-listing")]
@@ -71,7 +232,14 @@ class ListingOperationsAgent:
         self.events.publish(task_id, "worker.completed", self.name, {"shopify_count": len(shopify), "ebay_count": len(ebay)})
         return result
 
-    def _enhance_localization(self, task_id: str, products: list[CanonicalProduct], shopify: list, ebay: list) -> None:
+    def _enhance_localization(
+        self,
+        task_id: str,
+        products: list[CanonicalProduct],
+        shopify: list,
+        ebay: list,
+        context: ExecutionContext | None = None,
+    ) -> None:
         if not self.model_runtime.readiness("worker")["configured"]:
             return
         compact = [{
@@ -103,17 +271,37 @@ class ListingOperationsAgent:
                 if draft.platform == "ebay_us":
                     draft.data["title"] = draft.title
                     draft.data["description"] = draft.description
-            self.events.publish(task_id, "agent.model_completed", self.name, {"operation": "en_us_localization", "product_count": len(by_id)})
+            self.events.publish(task_id, "agent.model_completed", self.name, {
+                "operation": "en_us_localization", "product_count": len(by_id),
+                "process_task_id": context.process_task_id if context else "",
+            })
         except Exception as exc:
-            self.events.publish(task_id, "agent.model_fallback", self.name, {"operation": "en_us_localization", "error": str(exc)[:500]})
+            self.events.publish(task_id, "agent.model_fallback", self.name, {
+                "operation": "en_us_localization", "error": str(exc)[:500],
+                "process_task_id": context.process_task_id if context else "",
+            })
 
 
 def _localization_markdown(shopify: list, ebay: list) -> str:
     lines = ["# en-US Localization Notes", "", "All localized content is derived from canonical product facts. Missing facts remain explicit Listing gaps.", ""]
-    for left, right in zip(shopify, ebay):
-        lines.extend([
-            f"## Product `{left.product_id}`", "",
-            f"- Shopify title: {left.title}", f"- eBay title: {right.title}",
-            f"- Shopify gaps: {len(left.gaps)}", f"- eBay gaps: {len(right.gaps)}", "",
-        ])
+    by_product: dict[str, dict[str, Any]] = {}
+    for draft in [*shopify, *ebay]:
+        by_product.setdefault(draft.product_id, {})[draft.platform] = draft
+    for product_id, drafts in by_product.items():
+        lines.extend([f"## Product `{product_id}`", ""])
+        for platform, label in (("shopify", "Shopify"), ("ebay_us", "eBay")):
+            draft = drafts.get(platform)
+            if draft:
+                lines.extend([f"- {label} title: {draft.title}", f"- {label} gaps: {len(draft.gaps)}"])
+        lines.append("")
     return "\n".join(lines)
+
+
+def _platform_scope(task_content: str) -> set[str]:
+    normalized = str(task_content or "").casefold()
+    selected: set[str] = set()
+    if "shopify" in normalized:
+        selected.add("shopify")
+    if "ebay" in normalized:
+        selected.add("ebay_us")
+    return selected or {"shopify", "ebay_us"}

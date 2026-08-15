@@ -50,7 +50,7 @@ function taskStatusSummary(tasks: TaskInfo[]): string {
 export function StreamingTaskList({
   tasks = [],
   streamingText = '',
-  emptyText = '暂无 CAMEL Workforce 子任务。',
+  emptyText = '暂无智能体子任务。',
   waiting = false,
 }: StreamingTaskListProps) {
   const parsed = useMemo(() => parseStreamingTasks(streamingText), [streamingText]);

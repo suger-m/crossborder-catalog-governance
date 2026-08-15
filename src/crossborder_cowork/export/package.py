@@ -34,13 +34,11 @@ class ExportPackageService:
 
     def create_package(self, task_id: str, artifact_ids: list[str], review: dict[str, Any]) -> dict:
         members: list[dict[str, Any]] = []
-        artifacts_by_type: dict[str, dict[str, Any]] = {}
+        selected_artifacts: list[dict[str, Any]] = []
         for artifact_id in dict.fromkeys(artifact_ids):
             artifact = self.artifacts.get(artifact_id)
             if artifact and Path(artifact["absolute_path"]).is_file():
-                current = artifacts_by_type.get(artifact["artifact_type"])
-                if current is None or artifact["created_at"] >= current["created_at"]:
-                    artifacts_by_type[artifact["artifact_type"]] = artifact
+                selected_artifacts.append(artifact)
         manifest = {
             "format": "crossborder-listing-package@v1",
             "task_id": task_id,
@@ -49,9 +47,9 @@ class ExportPackageService:
         }
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for artifact in sorted(artifacts_by_type.values(), key=lambda item: item["artifact_type"]):
+            for artifact in selected_artifacts:
                 path = Path(artifact["absolute_path"])
-                arcname = f"artifacts/{artifact['artifact_type']}{path.suffix.lower()}"
+                arcname = f"artifacts/{artifact['artifact_type']}-{artifact['id']}{path.suffix.lower()}"
                 info = zipfile.ZipInfo(arcname, date_time=(2026, 1, 1, 0, 0, 0))
                 info.compress_type = zipfile.ZIP_DEFLATED
                 archive.writestr(info, path.read_bytes())

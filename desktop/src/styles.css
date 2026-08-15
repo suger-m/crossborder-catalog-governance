@@ -4849,6 +4849,29 @@ button:disabled {
 .artifact-preview dl { display: grid; grid-template-columns: 100px 1fr; gap: 8px 14px; margin: 18px 0; }
 .artifact-preview dt { color: #7b8494; }
 .artifact-preview dd { margin: 0; word-break: break-word; }
+.artifact-download { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.artifact-content { max-height: 520px; overflow: auto; border: 1px solid #e7eaf0; border-radius: 8px; background: #fbfcfe; padding: 14px; }
+.artifact-content.plain pre { margin: 0; color: #344054; font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+.artifact-load-more { margin-top: 10px; }
+.workspace-inline-state { display: flex; min-height: 120px; align-items: center; justify-content: center; gap: 8px; color: #667085; }
+.workspace-inline-state.failed { min-height: auto; justify-content: flex-start; color: #b42318; }
+.agent-workspace-state { display: flex; min-height: 260px; align-items: center; justify-content: center; gap: 12px; border: 1px dashed #d6dce6; border-radius: 10px; background: #fff; color: #667085; }
+.agent-workspace-state h3 { margin: 0 0 5px; color: #344054; font-size: 15px; }
+.agent-workspace-state p { margin: 0; font-size: 12px; }
+.agent-workspace-state.failed { border-color: #f1c7c3; background: #fff8f7; color: #b42318; }
+.chat-task-progress-lines { display: grid; gap: 3px; margin-top: 7px; }
+.chat-task-progress-lines i { overflow: hidden; color: #667085; font-size: 11px; font-style: normal; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.chat-task-tools { display: grid; gap: 4px; margin-top: 7px; }
+.chat-task-tools > i { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; gap: 5px; color: #475467; font-size: 10px; font-style: normal; }
+.chat-task-tools span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-task-tools b { color: #667085; font-weight: 700; }
+.workflow-progress-lines { display: grid; gap: 5px; border-radius: 8px; background: #fff; padding: 9px 10px; }
+.workflow-progress-lines strong { color: #344054; font-size: 11px; }
+.workflow-progress-lines p { margin: 0; color: #667085; font-size: 11px; line-height: 1.45; }
+.eigent-toolkit-log-status { margin-left: auto; color: #667085; font-size: 10px; font-weight: 700; }
+.eigent-toolkit-log.running .eigent-toolkit-log-status { color: #b54708; }
+.eigent-toolkit-log.completed .eigent-toolkit-log-status { color: #027a48; }
+.eigent-toolkit-log.failed .eigent-toolkit-log-status { color: #b42318; }
 .virtual-file-tree { min-height: 0; overflow: auto; border: 1px solid #e3e7ee; border-radius: 10px; background: #fff; padding: 8px; }
 .virtual-root { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 8px 7px 10px; color: #2f3b52; }
 .virtual-root strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }

@@ -20,18 +20,9 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TaskState, type TaskStateType } from '@/components/TaskState';
 import { Button } from '@/components/ui/button';
-import ShinyText from '@/components/ui/ShinyText/ShinyText';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ToolCall, WorkerNodeView, WorkerTaskView } from '@/types';
-import {
-  asRecord,
-  toolCallHeadline,
-  toolCallMessage,
-  toolOutputSummary,
-  toolPayloadPreview,
-} from '@/lib/coworkPresentation';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
-import { stepLabel, toolLabel } from '@/lib/crossborderLabels';
+import { statusLabel, stepLabel, toolLabel } from '@/lib/crossborderLabels';
 import { getWorkflowAgentDisplay, normalizeAgentType } from './agents';
 import { completionReportContent } from './completionReportContent';
 import { MarkDown } from './MarkDown';
@@ -65,11 +56,6 @@ function shortTaskId(taskId: string) {
   return taskId;
 }
 
-function compactJson(value: unknown, maxLength = 180) {
-  if (!value || (typeof value === 'object' && Object.keys(value as Record<string, unknown>).length === 0)) return '';
-  return toolPayloadPreview(value, maxLength);
-}
-
 function taskStateCounts(tasks: WorkerTaskView[]) {
   return {
     all: tasks.length,
@@ -100,9 +86,7 @@ function taskPreviewText(task?: WorkerTaskView) {
   const documentFile = task.fileList?.find((file) => fileContent(file));
   return (
     fileContent(documentFile) ||
-    String(task.result || '').trim() ||
-    toolOutputSummary(asRecord(task.toolkits?.[0]?.output_json)) ||
-    compactJson(task.toolkits?.[0]?.output_json, 360)
+    String(task.result || '').trim()
   );
 }
 
@@ -127,16 +111,7 @@ function idleWorkspaceCopy(agent: WorkerNodeView, task?: WorkerTaskView) {
 
 function terminalLines(task?: WorkerTaskView): string[] {
   if (!task) return [];
-  if (task.terminal && task.terminal.length > 0) return task.terminal;
-  const tool = task.toolkits?.[0];
-  if (!tool) return [];
-  const lines = [`$ ${toolCallHeadline(tool.tool_name, asRecord(tool.input_json), asRecord(tool.output_json))}`];
-  if (tool.error_message) {
-    lines.push(`错误：${tool.error_message}`);
-  } else {
-    lines.push(toolCallMessage(tool.tool_name, asRecord(tool.input_json), asRecord(tool.output_json), tool.error_message, tool.status));
-  }
-  return lines;
+  return task.terminal || [];
 }
 
 function workspaceKind(agent: WorkerNodeView) {
@@ -149,16 +124,6 @@ function workspaceKind(agent: WorkerNodeView) {
   return 'developer_agent';
 }
 
-function toolMessage(tool: ToolCall) {
-  return toolCallMessage(
-    tool.tool_name,
-    asRecord(tool.input_json),
-    asRecord(tool.output_json),
-    tool.error_message,
-    tool.status
-  );
-}
-
 function toolkitStatusValue(status?: ToolCall['status']): 'running' | 'completed' | 'failed' | 'pending' {
   if (status === 'running') return 'running';
   if (status === 'succeeded' || status === 'completed') return 'completed';
@@ -166,15 +131,8 @@ function toolkitStatusValue(status?: ToolCall['status']): 'running' | 'completed
   return 'pending';
 }
 
-function toolkitMethodLabel(toolName: string): string { return toolLabel(toolName); }
-
 function toolkitDisplayName(tool: ToolCall): string {
-  const worker = String(tool.worker_name || '').toLowerCase();
-  if (worker.includes('retrieval')) return '检索工具包';
-  if (worker.includes('analysis') || tool.tool_name.includes('report')) return '笔记工具包';
-  if (worker.includes('reviewer')) return '笔记工具包';
-  if (worker.includes('check') || worker.includes('eval') || worker.includes('ops')) return '终端工具包';
-  return '业务工具包';
+  return toolLabel(tool.tool_name);
 }
 
 export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
@@ -212,14 +170,12 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
       ...(task.sourceToolNames || []),
       ...task.toolkits.map((tool) => tool.tool_name),
     ]);
-    return Array.from(new Set([...agent.tools, ...fromTasks])).filter(Boolean);
-  }, [agent.tasks, agent.tools]);
+    return Array.from(new Set(fromTasks)).filter(Boolean);
+  }, [agent.tasks]);
 
   const selectedPreview = taskPreviewText(selectedTask);
   const selectedCompletionReport = completionReportContent(selectedTask);
   const selectedTerminal = terminalLines(selectedTask);
-  const lastActiveToolkit = selectedTask?.toolkits?.filter((tool) => toolkitStatusValue(tool.status) === 'running').at(-1);
-
   useEffect(() => {
     setIsExpanded(data.isExpanded);
   }, [data.isExpanded]);
@@ -386,14 +342,7 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
                   {task.status === 'running' && task.toolkits.length > 0 ? (
                     <div className="workflow-running-toolkit">
                       {getToolkitIcon(toolkitDisplayName(task.toolkits[0]))}
-                      <ShinyText
-                        text={toolCallHeadline(
-                          task.toolkits[0].tool_name,
-                          asRecord(task.toolkits[0].input_json),
-                          asRecord(task.toolkits[0].output_json)
-                        )}
-                        className="workflow-running-toolkit-text"
-                      />
+                      <span className="workflow-running-toolkit-text">{toolkitDisplayName(task.toolkits[0])} · 执行中</span>
                     </div>
                   ) : null}
                 </button>
@@ -417,53 +366,24 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
               >
                 {selectedTask ? (
                   <div ref={wrapperRef} className="flex w-full flex-col gap-sm">
+                    {selectedTerminal.length > 0 ? (
+                      <div className="workflow-progress-lines">
+                        <strong>工作进度</strong>
+                        {selectedTerminal.map((line, index) => <p key={`${index}:${line}`}>{line}</p>)}
+                      </div>
+                    ) : null}
                     {(selectedTask.toolkits || []).length > 0 ? (
                       selectedTask.toolkits.map((tool, index) => {
                         const toolkitName = toolkitDisplayName(tool);
-                        const headline = toolCallHeadline(
-                          tool.tool_name,
-                          asRecord(tool.input_json),
-                          asRecord(tool.output_json)
-                        );
                         const toolkitState = toolkitStatusValue(tool.status);
                         return (
-                          <Tooltip key={tool.id || `${selectedTask.id}:${index}`}>
-                            <TooltipTrigger asChild>
-                              <div className="eigent-toolkit-log">
-                                <div className="eigent-toolkit-log-top">
-                                  {toolkitState === 'running' ? (
-                                    <Loader2 className="spin" size={16} />
-                                  ) : (
-                                    getToolkitIcon(toolkitName)
-                                  )}
-                                  <span className="eigent-toolkit-log-name">{toolkitName}</span>
-                                </div>
-                                <div className="eigent-toolkit-log-body">
-                                  <div className="eigent-toolkit-log-method">
-                                    {toolkitMethodLabel(tool.tool_name)}
-                                  </div>
-                                  <div className="eigent-toolkit-log-message">
-                                    {toolMessage(tool) || headline}
-                                  </div>
-                                </div>
-                              </div>
-                            </TooltipTrigger>
-                            {toolMessage(tool) ? (
-                              <TooltipContent
-                                align="start"
-                                className="scrollbar pointer-events-auto !fixed left-6 z-[9999] max-h-[200px] w-max max-w-[296px] select-text overflow-y-auto text-wrap break-words rounded-lg border border-solid border-task-border-default bg-surface-tertiary p-2 text-label-xs"
-                                side="bottom"
-                                sideOffset={4}
-                              >
-                                <MarkDown
-                                  content={toolMessage(tool)}
-                                  enableTypewriter={false}
-                                  pTextSize="text-label-xs"
-                                  olPadding="pl-4"
-                                />
-                              </TooltipContent>
-                            ) : null}
-                          </Tooltip>
+                          <div className={`eigent-toolkit-log ${toolkitState}`} key={tool.id || `${selectedTask.id}:${index}`}>
+                            <div className="eigent-toolkit-log-top">
+                              {toolkitState === 'running' ? <Loader2 className="spin" size={16} /> : getToolkitIcon(toolkitName)}
+                              <span className="eigent-toolkit-log-name">{toolkitName}</span>
+                              <b className="eigent-toolkit-log-status">{statusLabel(toolkitState)}</b>
+                            </div>
+                          </div>
                         );
                       })
                     ) : (
@@ -474,7 +394,7 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
                       <div className="group relative my-2 flex w-full flex-col rounded-lg bg-surface-primary">
                         <div className="sticky top-0 z-10 flex items-center justify-between rounded-lg bg-surface-primary py-2 pl-2 pr-2">
                           <div className="text-label-sm font-bold text-text-primary">
-                            完成报告
+                            完成摘要
                           </div>
                           <Button
                             variant="ghost"

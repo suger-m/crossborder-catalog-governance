@@ -122,6 +122,133 @@ class ProductEventStore:
         if event_type == "task.created":
             task = dict(payload.get("task") or {})
             drafts.append(("task_state", {"task_id": task_id, "state": "OPEN", "result": "", "task": task}))
+        elif event_type == "workforce.task_decomposed":
+            subtasks = payload.get("subtasks") if isinstance(payload.get("subtasks"), list) else []
+            if not subtasks:
+                subtasks = [
+                    {
+                        "id": str(step_id),
+                        "title": str((self.db.fetchone("SELECT title FROM task_steps WHERE id=?", (str(step_id),)) or {}).get("title") or step_id),
+                    }
+                    for step_id in payload.get("subtask_ids", [])
+                ]
+            drafts.append(("to_sub_tasks", {
+                "task_id": task_id,
+                "summary_task": str(payload.get("objective") or "动态任务计划"),
+                "sub_tasks": [
+                    {
+                        "id": str(item.get("id") or ""),
+                        "content": str(item.get("title") or item.get("content") or ""),
+                        "state": "OPEN",
+                    }
+                    for item in subtasks if isinstance(item, dict) and item.get("id")
+                ],
+            }))
+        elif event_type == "workforce.task_assigned":
+            step_id = str(payload.get("process_task_id") or payload.get("task_id") or "")
+            worker_name = str(payload.get("worker_name") or payload.get("worker_id") or source)
+            step = self.db.fetchone("SELECT title FROM task_steps WHERE id=?", (step_id,)) or {}
+            common = {
+                "agent_id": worker_name,
+                "agent_name": _worker_label(worker_name),
+                "worker_name": worker_name,
+                "process_task_id": step_id,
+                "content": str(payload.get("title") or payload.get("content") or step.get("title") or ""),
+            }
+            drafts.extend([
+                ("create_agent", {**common, "agent_type": _worker_kind(worker_name), "tools": []}),
+                ("assign_task", {
+                    **common,
+                    "task_id": step_id,
+                    "state": "WAITING",
+                    "failure_count": 0,
+                    "dependencies": [str(item) for item in payload.get("dependencies", [])],
+                }),
+            ])
+        elif event_type == "workforce.task_started":
+            step_id = str(payload.get("process_task_id") or payload.get("task_id") or "")
+            worker_name = str(payload.get("worker_name") or payload.get("worker_id") or source)
+            step = self.db.fetchone("SELECT title FROM task_steps WHERE id=?", (step_id,)) or {}
+            drafts.append(("activate_agent", {
+                "agent_id": worker_name,
+                "agent_name": _worker_label(worker_name),
+                "worker_name": worker_name,
+                "process_task_id": step_id,
+                "state": "RUNNING",
+                "message": str(payload.get("title") or payload.get("content") or step.get("title") or "任务已开始"),
+            }))
+        elif event_type in {"workforce.task_completed", "workforce.task_failed"}:
+            failed = event_type.endswith("failed")
+            step_id = str(payload.get("process_task_id") or payload.get("task_id") or "")
+            worker_name = str(payload.get("worker_name") or payload.get("worker_id") or source)
+            persisted = self.db.fetchone("SELECT result_json FROM task_steps WHERE id=?", (step_id,)) or {}
+            persisted_result = json_loads(persisted.get("result_json"), {})
+            summary = str(
+                persisted_result.get("summary")
+                or payload.get("summary")
+                or payload.get("result_summary")
+                or payload.get("error")
+                or payload.get("error_message")
+                or ("任务执行失败" if failed else "任务已完成")
+            )
+            output_resource_ids = persisted_result.get("output_resource_ids") or payload.get("output_resource_ids") or []
+            persisted_status = str(persisted_result.get("status") or "").lower()
+            state = "FAILED" if failed else {
+                "blocked": "BLOCKED",
+                "waiting_approval": "WAITING_APPROVAL",
+                "needs_confirmation": "WAITING_APPROVAL",
+            }.get(persisted_status, str(payload.get("state") or "DONE"))
+            common = {
+                "agent_id": worker_name,
+                "agent_name": _worker_label(worker_name),
+                "worker_name": worker_name,
+                "process_task_id": step_id,
+            }
+            drafts.extend([
+                ("task_state", {
+                    **common,
+                    "task_id": step_id,
+                    "state": state,
+                    "result": summary,
+                    "summary": summary,
+                    "failure_count": 1 if failed else 0,
+                    "output_resource_ids": [str(item) for item in output_resource_ids],
+                }),
+                ("deactivate_agent", {**common, "state": state, "message": summary, "tokens": 0}),
+            ])
+        elif event_type == "agent.progress":
+            step_id = str(payload.get("process_task_id") or "")
+            worker_name = str(payload.get("worker_name") or source)
+            drafts.append(("agent_progress", {
+                "agent_id": worker_name,
+                "agent_name": _worker_label(worker_name),
+                "worker_name": worker_name,
+                "process_task_id": step_id,
+                "message": str(payload.get("message") or ""),
+                "phase": str(payload.get("phase") or ""),
+            }))
+        elif event_type in {"tool_call.started", "tool_call.succeeded", "tool_call.failed"}:
+            step_id = str(payload.get("process_task_id") or "")
+            worker_name = str(payload.get("worker_name") or source)
+            tool_call_id = str(payload.get("tool_call_id") or event["id"])
+            tool_name = str(payload.get("tool_name") or "tool")
+            tool_label = str(payload.get("tool_label") or tool_name)
+            status = {
+                "tool_call.started": "running",
+                "tool_call.succeeded": "completed",
+                "tool_call.failed": "failed",
+            }[event_type]
+            action = "activate_toolkit" if status == "running" else "deactivate_toolkit"
+            drafts.append((action, {
+                "agent_name": _worker_label(worker_name),
+                "worker_name": worker_name,
+                "process_task_id": step_id,
+                "tool_call_id": tool_call_id,
+                "toolkit_name": tool_label,
+                "method_name": tool_name,
+                "status": status,
+                "message": tool_label,
+            }))
         elif event_type == "task.step_changed":
             step_id = str(payload.get("step_id") or "")
             status = str(payload.get("status") or "queued")
@@ -147,16 +274,18 @@ class ProductEventStore:
                     "waiting_approval": "WAITING_APPROVAL", "queued": "OPEN",
                 }.get(status, status.upper())
                 result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+                summary = str(result.get("summary") or step.get("title") or status)
                 drafts.extend([
-                    ("task_state", {**common, "task_id": step_id, "state": state, "result": result, "failure_count": 1 if status == "failed" else 0}),
-                    ("deactivate_agent", {**common, "state": state, "message": str(result.get("summary") or step.get("title") or status), "tokens": 0}),
+                    ("task_state", {**common, "task_id": step_id, "state": state, "result": summary, "summary": summary, "failure_count": 1 if status == "failed" else 0}),
+                    ("deactivate_agent", {**common, "state": state, "message": summary, "tokens": 0}),
                 ])
         elif event_type == "artifact.created":
             artifact = dict(payload.get("artifact") or {})
             drafts.append(("write_file", {
-                "process_task_id": str(artifact.get("metadata", {}).get("worker_task_id") or ""),
+                "process_task_id": str(artifact.get("process_task_id") or artifact.get("metadata", {}).get("process_task_id") or artifact.get("metadata", {}).get("worker_task_id") or ""),
                 "agent_name": _worker_label(str(artifact.get("worker_name") or source)),
                 "worker_name": str(artifact.get("worker_name") or source),
+                "artifact_id": str(artifact.get("id") or ""),
                 "file_path": str(artifact.get("relative_path") or artifact.get("file_name") or ""),
                 "file": artifact,
             }))
@@ -169,10 +298,13 @@ class ProductEventStore:
             }))
         elif event_type == "approval.decided":
             drafts.append(("human_response", {"approval": dict(payload.get("approval") or {})}))
-        elif event_type == "agent.model_completed":
-            drafts.append(("deactivate_toolkit", {"agent_name": _worker_label(source), "worker_name": source, "toolkit_name": "模型运行环境", "method_name": str(payload.get("operation") or "complete"), "message": "模型操作已完成", "result": payload}))
-        elif event_type == "agent.model_fallback":
-            drafts.append(("deactivate_toolkit", {"agent_name": _worker_label(source), "worker_name": source, "toolkit_name": "模型运行环境", "method_name": str(payload.get("operation") or "fallback"), "message": str(payload.get("error") or "模型已降级处理"), "result": payload}))
+        elif event_type in {"agent.model_completed", "agent.model_fallback"}:
+            drafts.append(("activity", {
+                "event_type": event_type,
+                "worker_name": source,
+                "process_task_id": str(payload.get("process_task_id") or ""),
+                "message": "模型辅助处理已完成" if event_type.endswith("completed") else "模型辅助处理未采用，已使用确定性结果",
+            }))
         elif event_type == "workflow.failed":
             drafts.append(("error", {"summary": str(payload.get("error") or "工作流执行失败"), "status": "failed"}))
         elif event_type == "task.status_changed":
@@ -183,7 +315,12 @@ class ProductEventStore:
                 drafts.append(("error" if status == "failed" else "end", {"summary": str(task.get("error") or task.get("objective") or status), "status": status}))
 
         if not drafts:
-            drafts.append(("activity", {"event_type": event_type, "worker_name": source, "payload": payload}))
+            drafts.append(("activity", {
+                "event_type": event_type,
+                "worker_name": source,
+                "process_task_id": str(payload.get("process_task_id") or ""),
+                "message": str(payload.get("message") or payload.get("summary") or ""),
+            }))
         return self.append_many(
             task_id, drafts, source_kind="platform_event",
             source_event_id=str(event["id"]), created_at=str(event.get("created_at") or ""),

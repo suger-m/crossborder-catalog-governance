@@ -69,6 +69,9 @@ declare global {
     }[];
     failure_count?: number;
     reAssignTo?: string;
+    progressLines?: string[];
+    outputResourceIds?: string[];
+    dependencies?: string[];
   }
 
   interface File {
@@ -98,6 +101,7 @@ declare global {
     activeWebviewIds?: ActiveWebView[];
     tools?: string[];
     sourceWorkerName?: string;
+    workspaceState?: 'not_started' | 'running' | 'empty' | 'failed' | 'completed';
     workerInfo?: {
       name: string;
       description: string;

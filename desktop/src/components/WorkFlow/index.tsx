@@ -106,10 +106,8 @@ function nativeAgentToWorkerNode(agent: Agent): WorkerNodeView {
       reAssignTo: task.reAssignTo,
       toolkits: (task.toolkits || []).map((toolkit) => ({
         id: toolkit.toolkitId || `${task.id}:${toolkit.toolkitName}:${toolkit.toolkitMethods}`,
-        tool_name: toolkit.toolkitMethods || toolkit.toolkitName,
+        tool_name: toolkit.toolkitName || toolkit.toolkitMethods,
         status: toolkit.toolkitStatus || 'pending',
-        input_json: {},
-        output_json: toolkit.message ? { message: toolkit.message } : {},
       })),
     })),
     log: [],
@@ -313,8 +311,8 @@ function WorkflowCanvas({ agents, activeAgentId, focusedAgentId, onSelectAgent }
           <span>{workflowSummary.all} 个智能体</span>
           <span>{workflowSummary.tasks} 个子任务</span>
           <span>{workflowSummary.running} 个执行中</span>
-          <span>{workflowSummary.completed} 个已完成</span>
-          {workflowSummary.failed > 0 ? <span>{workflowSummary.failed} 个失败</span> : null}
+          <span>{workflowSummary.completed} 个智能体已完成</span>
+          {workflowSummary.failed > 0 ? <span>{workflowSummary.failed} 个智能体失败</span> : null}
         </div>
       </div>
       <div

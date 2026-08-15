@@ -68,6 +68,16 @@ CREATE TABLE IF NOT EXISTS task_steps (
   completed_at TEXT,
   FOREIGN KEY(task_id) REFERENCES tasks(id)
 );
+CREATE TABLE IF NOT EXISTS task_step_dependencies (
+  step_id TEXT NOT NULL,
+  depends_on_step_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(step_id, depends_on_step_id),
+  FOREIGN KEY(step_id) REFERENCES task_steps(id),
+  FOREIGN KEY(depends_on_step_id) REFERENCES task_steps(id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_step_dependencies_upstream
+  ON task_step_dependencies(depends_on_step_id);
 CREATE TABLE IF NOT EXISTS events (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
   id TEXT NOT NULL UNIQUE,
@@ -98,6 +108,8 @@ CREATE INDEX IF NOT EXISTS idx_product_events_task_sequence
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL,
+  project_id TEXT NOT NULL DEFAULT '',
+  process_task_id TEXT NOT NULL DEFAULT '',
   worker_name TEXT NOT NULL,
   artifact_type TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -111,6 +123,29 @@ CREATE TABLE IF NOT EXISTS artifacts (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS project_resources (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  logical_key TEXT NOT NULL,
+  owner_worker_name TEXT NOT NULL,
+  source_task_id TEXT NOT NULL,
+  source_step_id TEXT NOT NULL DEFAULT '',
+  storage_kind TEXT NOT NULL,
+  storage_ref TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(id),
+  FOREIGN KEY(source_task_id) REFERENCES tasks(id),
+  UNIQUE(project_id, resource_type, logical_key, version)
+);
+CREATE INDEX IF NOT EXISTS idx_project_resources_lookup
+  ON project_resources(project_id, resource_type, status, logical_key, version DESC);
+CREATE INDEX IF NOT EXISTS idx_project_resources_source_step
+  ON project_resources(source_step_id, created_at);
 CREATE TABLE IF NOT EXISTS approvals (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL,
@@ -152,9 +187,75 @@ class Database:
     def initialize(self) -> None:
         with self.connect() as conn:
             conn.executescript(PLATFORM_SCHEMA)
+            self._ensure_platform_columns(conn)
             if self.migrations_dir and self.migrations_dir.exists():
                 for path in sorted(self.migrations_dir.glob("*.sql")):
                     conn.executescript(path.read_text(encoding="utf-8"))
+            self._ensure_catalog_columns(conn)
+            self._ensure_indexes(conn)
+
+    @staticmethod
+    def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
+        return {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+    @classmethod
+    def _ensure_column(cls, conn: sqlite3.Connection, table: str, definition: str) -> None:
+        name = definition.split()[0]
+        if name not in cls._column_names(conn, table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+
+    @classmethod
+    def _ensure_platform_columns(cls, conn: sqlite3.Connection) -> None:
+        cls._ensure_column(conn, "artifacts", "project_id TEXT NOT NULL DEFAULT ''")
+        cls._ensure_column(conn, "artifacts", "process_task_id TEXT NOT NULL DEFAULT ''")
+        conn.execute(
+            """UPDATE artifacts SET project_id=COALESCE(
+                   (SELECT project_id FROM tasks WHERE tasks.id=artifacts.task_id), '')
+               WHERE project_id=''"""
+        )
+
+    @classmethod
+    def _ensure_catalog_columns(cls, conn: sqlite3.Connection) -> None:
+        for table in (
+            "products", "skus", "product_facts", "graph_nodes", "graph_edges",
+            "graph_evidence", "graph_versions", "listings", "task_products",
+        ):
+            cls._ensure_column(conn, table, "project_id TEXT NOT NULL DEFAULT ''")
+        cls._ensure_column(conn, "listings", "process_task_id TEXT NOT NULL DEFAULT ''")
+
+        conn.execute(
+            """UPDATE task_products SET project_id=COALESCE(
+                   (SELECT project_id FROM tasks WHERE tasks.id=task_products.task_id), '')
+               WHERE project_id=''"""
+        )
+        for table in ("products", "skus", "product_facts", "listings"):
+            conn.execute(
+                f"""UPDATE {table} SET project_id=COALESCE(
+                       (SELECT tp.project_id FROM task_products tp
+                        WHERE tp.product_id={table}.product_id LIMIT 1), '')
+                   WHERE project_id=''"""
+                if table != "products"
+                else """UPDATE products SET project_id=COALESCE(
+                       (SELECT tp.project_id FROM task_products tp
+                        WHERE tp.product_id=products.id LIMIT 1), '')
+                   WHERE project_id=''"""
+            )
+
+    @staticmethod
+    def _ensure_indexes(conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_products_project ON products(project_id, title);
+            CREATE INDEX IF NOT EXISTS idx_artifacts_project_created ON artifacts(project_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_artifacts_process_task ON artifacts(process_task_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_skus_project_product ON skus(project_id, product_id);
+            CREATE INDEX IF NOT EXISTS idx_product_facts_project_product ON product_facts(project_id, product_id);
+            CREATE INDEX IF NOT EXISTS idx_listings_project_platform ON listings(project_id, platform, product_id);
+            CREATE INDEX IF NOT EXISTS idx_graph_nodes_project ON graph_nodes(project_id, node_type);
+            CREATE INDEX IF NOT EXISTS idx_graph_edges_project_source ON graph_edges(project_id, source_id);
+            CREATE INDEX IF NOT EXISTS idx_task_products_project ON task_products(project_id, task_id);
+            """
+        )
 
     def execute(self, sql: str, params: Iterable[object] = ()) -> None:
         with self.connect() as conn:

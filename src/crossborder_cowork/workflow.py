@@ -1,27 +1,19 @@
 from __future__ import annotations
 
-from pathlib import Path
 import threading
 from typing import Any
 
 from .catalog.models import CanonicalProduct, ProductFact, SourceEvidence
-from .platform.tasks import TaskService
-from .util import utc_now
 from .util import json_dumps, stable_id
+from .workforce import CrossborderWorkforceRuntime
 
 
 class CatalogWorkflow:
-    """Ordered Workforce execution for the four business Agents."""
-
-    DEFAULT_STEPS = [
-        {"title": "构建规范 Product/SKU 商品目录", "worker_name": "catalog_steward_agent"},
-        {"title": "执行美国法规与平台合规检查", "worker_name": "compliance_specialist_agent"},
-        {"title": "生成 Shopify 和 eBay 美国站本地化草稿", "worker_name": "listing_operations_agent"},
-        {"title": "审核一致性并生成导出包", "worker_name": "governance_reviewer_agent"},
-    ]
+    """Concurrency guard and approval entry point for native CAMEL Workforce."""
 
     def __init__(self, app: Any) -> None:
         self.app = app
+        self.runtime = CrossborderWorkforceRuntime(app)
         self._locks: dict[str, threading.Lock] = {}
         self._locks_guard = threading.Lock()
 
@@ -31,130 +23,92 @@ class CatalogWorkflow:
         if not lock.acquire(blocking=False):
             return self.app.tasks.get_task(task_id)
         try:
-            return self._run_task_locked(task_id)
+            return self.runtime.run(task_id)
         finally:
             lock.release()
 
-    def _run_task_locked(self, task_id: str) -> dict[str, Any]:
-        task = self.app.tasks.get_task(task_id)
-        self.app.tasks.ensure_default_steps(task_id, self.DEFAULT_STEPS)
-        self.app.tasks.update_status(task_id, "running", {"started_at": utc_now()})
-        try:
-            input_data = task.get("input") or {}
-            paths = [Path(path) for path in input_data.get("source_paths", [])]
-            if not paths:
-                raise ValueError("No source files supplied. Upload at least one catalog file before running.")
-            steps = self.app.tasks.get_task(task_id)["steps"]
-            catalog_step = steps[0]
-            self.app.tasks.update_step(catalog_step["id"], "running")
-            catalog = self.app.catalog_steward.run(task_id, paths)
-            catalog = self._apply_saved_resolutions(task_id, catalog, input_data)
-            self.app.tasks.update_step(catalog_step["id"], "completed", catalog)
-
-            compliance_step = self.app.tasks.get_task(task_id)["steps"][1]
-            self.app.tasks.update_step(compliance_step["id"], "running")
-            compliance = self.app.compliance_specialist.run(
-                task_id, catalog["products"], catalog["conflicts"], catalog["artifact_ids"],
-            )
-            self.app.tasks.update_step(compliance_step["id"], "completed", compliance)
-
-            listing_step = self.app.tasks.get_task(task_id)["steps"][2]
-            self.app.tasks.update_step(listing_step["id"], "running")
-            listing = self.app.listing_operations.run(task_id, catalog["products"], compliance["artifact_ids"])
-            self.app.tasks.update_step(listing_step["id"], "completed", listing)
-
-            governance_step = self.app.tasks.get_task(task_id)["steps"][3]
-            self.app.tasks.update_step(governance_step["id"], "running")
-            approvals = self.app.approvals.list(task_id)
-            review = self.app.governance_reviewer.run(
-                task_id, catalog["products"], compliance["results"], listing["shopify"], listing["ebay"],
-                sum(1 for item in approvals if item["status"] == "pending"),
-                [*catalog["artifact_ids"], *compliance["artifact_ids"], *listing["artifact_ids"]],
-            )
-            governance_step_status = {
-                "approved": "completed", "needs_confirmation": "waiting_approval", "blocked": "blocked",
-            }[review["decision"]["status"]]
-            self.app.tasks.update_step(governance_step["id"], governance_step_status, review)
-            result = {"catalog": catalog, "compliance": compliance, "listing": listing, "governance": review, "completed_at": utc_now()}
-            status = "completed" if review["decision"]["ready_for_export"] else ("waiting_approval" if review["decision"]["status"] == "needs_confirmation" else "blocked")
-            return self.app.tasks.update_status(task_id, status, result)
-        except Exception as exc:
-            self.app.events.publish(task_id, "workflow.failed", "platform", {"error": str(exc)})
-            return self.app.tasks.update_status(task_id, "failed", {}, str(exc))
-
     def approve_and_rerun(self, approval_id: str, decision: dict[str, Any]) -> dict[str, Any]:
         approval = self.app.approvals.decide(approval_id, "approved", decision)
-        task = self.app.tasks.get_task(approval["task_id"])
-        input_data = dict(task.get("input") or {})
-        if approval["approval_type"] == "catalog_conflict":
-            selected = decision.get("selected_value")
-            if selected in (None, ""):
-                raise ValueError("selected_value is required to resolve a catalog conflict")
-            resolutions = dict(input_data.get("conflict_resolutions") or {})
-            resolutions[approval["payload"]["id"]] = selected
-            input_data["conflict_resolutions"] = resolutions
-        elif approval["approval_type"] == "missing_required_fact":
-            selected = decision.get("selected_value")
-            if selected in (None, ""):
-                raise ValueError("selected_value is required to provide a missing product fact")
-            overrides = dict(input_data.get("fact_overrides") or {})
-            payload = approval["payload"]
-            overrides[f"{payload['product_id']}:{payload['field_name']}"] = {"value": selected, "approval_id": approval["id"]}
-            input_data["fact_overrides"] = overrides
-        self.app.database.execute("UPDATE tasks SET input_json=?,updated_at=? WHERE id=?", (json_dumps(input_data), utc_now(), task["id"]))
-        return self.run_task(task["id"])
-
-    def _apply_saved_resolutions(self, task_id: str, catalog: dict[str, Any], input_data: dict[str, Any]) -> dict[str, Any]:
-        resolutions = dict(input_data.get("conflict_resolutions") or {})
-        overrides = dict(input_data.get("fact_overrides") or {})
-        if not resolutions and not overrides:
-            return catalog
-        resolved_ids: set[str] = set()
-        for conflict in catalog.get("conflicts", []):
-            selected = resolutions.get(conflict["id"])
-            if selected in (None, ""):
-                continue
-            for raw in catalog.get("products", []):
-                if raw.get("id") == conflict.get("product_id"):
-                    raw[conflict["field_name"]] = selected
-                    raw["version"] = int(raw.get("version") or 1) + 1
-                    raw["status"] = "confirmed"
-                    for fact in raw.get("facts", []):
-                        if fact.get("field_name") == conflict["field_name"]:
-                            fact["state"] = "confirmed" if str(fact.get("value")) == str(selected) else "rejected"
-                    self.app.graph.upsert_candidate_graph([CanonicalProduct.model_validate(raw)], task_id)
-            resolved_ids.add(conflict["id"])
-            self.app.events.publish(task_id, "catalog.conflict_resolved", "human_approval", {"conflict_id": conflict["id"], "selected_value": selected})
-        catalog["conflicts"] = [item for item in catalog.get("conflicts", []) if item["id"] not in resolved_ids]
-        override_count = 0
-        for raw in catalog.get("products", []):
-            for key, override in overrides.items():
-                product_id, field_name = key.split(":", 1)
-                if raw.get("id") != product_id:
-                    continue
-                selected = override.get("value") if isinstance(override, dict) else override
-                approval_id = override.get("approval_id", "") if isinstance(override, dict) else ""
-                raw[field_name] = selected
-                raw["version"] = int(raw.get("version") or 1) + 1
-                raw["status"] = "confirmed"
-                fact = ProductFact(
-                    id=stable_id("fact", product_id, field_name, approval_id, selected),
-                    field_name=field_name, value=selected, state="confirmed", confidence=1.0,
-                    evidence=SourceEvidence(
-                        source_document_id=f"human_approval:{approval_id}", file_name="Human Approval",
-                        location=approval_id, text=str(selected),
-                    ),
-                ).model_dump()
-                if not any(existing.get("id") == fact["id"] for existing in raw.setdefault("facts", [])):
-                    raw["facts"].append(fact)
-                override_count += 1
-                self.app.events.publish(task_id, "catalog.fact_provided", "human_approval", {"product_id": product_id, "field_name": field_name})
-            self.app.graph.upsert_candidate_graph([CanonicalProduct.model_validate(raw)], task_id)
-        if resolved_ids or override_count:
-            artifact = self.app.artifacts.create_text(
-                task_id, "catalog_steward_agent", "canonical_product", "canonical_product_resolved",
-                content=json_dumps({"products": catalog["products"], "conflicts": catalog["conflicts"]}),
-                extension="json", mime_type="application/json", dependencies=catalog.get("artifact_ids", []),
+        previous = self.app.tasks.get_task(approval["task_id"])
+        input_data = dict(previous.get("input") or {})
+        affected_ids = decision.get("resource_ids") or approval.get("payload", {}).get("resource_ids") or []
+        input_data["approval_rerun_of"] = previous["id"]
+        input_data["approval_id"] = approval["id"]
+        rerun = self.app.tasks.create_task(previous["project_id"], previous["objective"], input_data=input_data)
+        previous_materials = self.app.materials.task_materials(previous["id"])
+        if previous_materials:
+            self.app.materials.bind_task(
+                rerun["id"], previous["project_id"],
+                [item["id"] for item in previous_materials],
             )
-            catalog.setdefault("artifact_ids", []).append(artifact["id"])
-        return catalog
+        resolved_ids = self._apply_approval_decision(rerun, approval, decision)
+        selected_ids = [
+            *[str(item) for item in affected_ids if str(item).strip()],
+            *resolved_ids,
+        ]
+        input_data["selected_resource_ids"] = list(dict.fromkeys(selected_ids))
+        input_data["material_ids"] = [item["id"] for item in previous_materials]
+        input_data["source_paths"] = self.app.materials.task_paths(rerun["id"])
+        self.app.tasks.update_input(rerun["id"], input_data)
+        return self.run_task(rerun["id"])
+
+    def _apply_approval_decision(
+        self,
+        rerun: dict[str, Any],
+        approval: dict[str, Any],
+        decision: dict[str, Any],
+    ) -> list[str]:
+        if approval["approval_type"] not in {"catalog_conflict", "missing_required_fact"}:
+            return []
+        selected = decision.get("selected_value")
+        if selected in (None, ""):
+            raise ValueError("selected_value is required for this approval")
+        payload = dict(approval.get("payload") or {})
+        product_id = str(payload.get("product_id") or "")
+        field_name = str(payload.get("field_name") or "")
+        stored = self.app.graph.get_product(product_id, project_id=rerun["project_id"])
+        if not stored or not field_name:
+            raise ValueError("Approval does not reference an available product fact")
+        raw = dict(stored["data"])
+        raw[field_name] = selected
+        raw["version"] = int(raw.get("version") or 1) + 1
+        raw["status"] = "confirmed"
+        facts = list(raw.get("facts") or [])
+        if approval["approval_type"] == "catalog_conflict":
+            for fact in facts:
+                if fact.get("field_name") == field_name:
+                    fact["state"] = "confirmed" if str(fact.get("value")) == str(selected) else "rejected"
+        else:
+            fact = ProductFact(
+                id=stable_id("fact", rerun["project_id"], product_id, field_name, approval["id"], selected),
+                field_name=field_name,
+                value=selected,
+                state="confirmed",
+                confidence=1.0,
+                evidence=SourceEvidence(
+                    source_document_id=f"human_approval:{approval['id']}",
+                    file_name="人工审批",
+                    location=approval["id"],
+                    text=str(selected),
+                ),
+            ).model_dump()
+            facts.append(fact)
+        raw["facts"] = facts
+        product = CanonicalProduct.model_validate(raw)
+        self.app.graph.upsert_candidate_graph(
+            [product], task_id=rerun["id"], project_id=rerun["project_id"],
+        )
+        artifact = self.app.artifacts.create_text(
+            rerun["id"], "catalog_steward_agent", "canonical_product",
+            "canonical_product_approved", content=json_dumps({"products": [product.model_dump()]}),
+            extension="json", mime_type="application/json",
+            metadata={"logical_key": "canonical_product", "resource_status": "active"},
+        )
+        collection = self.app.resources.create(
+            project_id=rerun["project_id"], resource_type="product_collection",
+            logical_key="canonical-products", owner_worker_name="catalog_steward_agent",
+            source_task_id=rerun["id"], storage_kind="database",
+            storage_ref=rerun["project_id"], status="active",
+            metadata={"product_ids": [product.id], "approval_id": approval["id"]},
+        )
+        return [artifact["resource_id"], collection["id"]]
