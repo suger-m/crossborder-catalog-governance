@@ -32,6 +32,9 @@ export interface CanonicalSku { id: string; external_id: string; color: string; 
 export interface CanonicalProduct { id: string; external_id: string; title: string; description: string; category: string; garment_type: string; materials: string[]; fiber_content: string; care_instructions: string; country_of_origin: string; manufacturer: string; claims: string[]; images: string[]; tags: string[]; skus: CanonicalSku[]; facts: ProductFact[]; version: number; status: string }
 export interface ModelSettings { source: string; model_platform: string; model_type: string; api_url: string; extra_params: Record<string, unknown>; has_api_key: boolean; version: number; updated_at: string }
 export interface ModelSettingsPayload { source: string; model_platform: string; model_type: string; api_key?: string; api_url: string; extra_params: Record<string, unknown> }
+export interface SkillSummary { name: string; description: string }
+export interface SkillDetail { name: string; content: string }
+export type ModelRoleStatus = Record<string, { configured?: boolean; source?: string; model_platform?: string; model_type?: string; ok?: boolean; error?: string }>;
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -55,6 +58,10 @@ export const api = {
   reject: (approvalId: string, payload: Record<string, unknown> = {}) => request<{ approval: Approval }>(`/api/approvals/${encodeURIComponent(approvalId)}/reject`, { method: 'POST', body: JSON.stringify(payload) }),
   modelSettings: () => request<ModelSettings>('/api/model-settings'),
   saveModelSettings: (payload: ModelSettingsPayload) => request<ModelSettings>('/api/model-settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  modelReadiness: () => request<ModelRoleStatus>('/api/model-settings/readiness'),
+  modelSmoke: () => request<ModelRoleStatus>('/api/model-settings/smoke', { method: 'POST' }),
+  skills: () => request<{ items: SkillSummary[] }>('/api/skills'),
+  skill: (name: string) => request<SkillDetail>(`/api/skills/${encodeURIComponent(name)}`),
   artifactDownloadUrl: (artifactId: string) => `${baseUrl}/api/artifacts/${encodeURIComponent(artifactId)}/download`,
   productEventStreamUrl: (taskId: string, afterSequence = 0) => `${baseUrl}/api/tasks/${encodeURIComponent(taskId)}/product-events/stream?after_sequence=${afterSequence}&protocol_version=1`,
 };
