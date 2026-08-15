@@ -10,7 +10,7 @@
 
 这些问题来自同一个架构缺口：Worker 的实际业务操作没有经过统一 Tool 边界，后端 Product Event 也没有形成工具、工作摘要、步骤结果和 Artifact 的完整投影。
 
-本次改造目标是让后端 Product Event 成为唯一 UI 状态源。桌面端不伪造工具调用，不从静态工具列表猜测运行状态，也不再把机器结果当作正式报告。
+本次改造目标是让 CAMEL Workforce 成为任务运行时，让后端 Product Event 成为唯一 UI 状态源。桌面端不伪造工具调用，不从静态工具列表猜测运行状态，也不再把机器结果当作正式报告。
 
 ## 2. 用户体验
 
@@ -51,20 +51,19 @@ Agent 子任务卡片主要展示逐条出现的公开工作摘要，例如：
 
 ## 4. 运行架构
 
-确定性业务操作通过统一 Tool Registry 和 Tool Executor 执行：
+当前 `CatalogWorkflow` 只是按固定顺序直接调用四个 Python 类，并非 CAMEL Workforce。本次必须删除它的串行执行职责，改为真实的 CAMEL Workforce 任务图。确定性业务操作通过统一 Tool Registry 和 Tool Executor 执行：
 
 ```text
-Worker
-  -> 发布 agent.progress
-  -> Tool Registry 解析 Tool
-  -> Tool Executor
-       -> tool_call.started
-       -> 执行确定性业务服务
-       -> tool_call.succeeded / tool_call.failed
-  -> 发布 agent.progress
+平台任务
+  -> CAMEL Workforce (PIPELINE)
+       -> 商品目录专员 Worker
+            -> 发布 agent.progress
+            -> Tool Executor 执行确定性业务服务
+       -> 合规专员 Worker ─┐
+       -> 商品刊登专员 Worker ─┤ 商品目录完成后并行
+       -> 治理审核员 Worker <- 等待合规和刊登完成
   -> Artifact Service 生成文件
-  -> artifact.created
-  -> Worker 返回结构化步骤结果
+  -> Product Event 投影
 ```
 
 Tool 是确定性执行边界，不改变现有 Agent、Skill、Tool 职责：
@@ -76,7 +75,44 @@ Tool 是确定性执行边界，不改变现有 Agent、Skill、Tool 职责：
 
 第一版需要覆盖实际业务操作，而不是只记录每个 Agent 的粗粒度阶段。
 
-### 4.1 商品目录专员
+### 4.1 CAMEL Workforce 运行时
+
+- `camel-ai==0.2.90` 是产品必需依赖，不再是可选 extras。
+- 每次平台任务创建一个独立的 `CrossborderWorkforce`，使用 `WorkforceMode.PIPELINE`。
+- 四个业务角色实现为 CAMEL `Worker` 节点；Worker 负责领取 CAMEL Task、建立执行上下文并调用业务 Agent。
+- 平台数据库 `task_steps.id` 直接作为 CAMEL `Task.id` 和 Eigent `process_task_id`，不再通过 Agent 名称模糊匹配。
+- CAMEL Task 的 `additional_info` 保存平台任务 ID、稳定 Worker ID 和步骤类型。
+- `CrossborderWorkforce` 按稳定 Worker ID 分配任务；模型不得把合规任务随机交给刊登 Agent。
+- `CatalogWorkflow` 只保留创建任务图、启动 Workforce、汇总最终状态和审批后重放的应用服务职责，不再直接串行调用四个 Agent。
+
+固定依赖图为：
+
+```text
+catalog_step
+  ├─> compliance_step ─┐
+  └─> listing_step ────┤
+                       └─> governance_step
+```
+
+Listing 只从 Canonical Product 读取商品事实，因此可以与合规检查并行。Governance 必须等待合规和 Listing 两个分支完成。
+
+CAMEL `Task.result` 只保存简短业务摘要、步骤状态和 Artifact ID。完整 Product、ComplianceResult 和 ListingDraft 继续保存在 SQLite 步骤结果、Product Graph 和 Artifact 中，不通过 CAMEL 依赖字符串传递。
+
+Workforce 原生回调是步骤生命周期的来源：
+
+- `TaskAssignedEvent`：记录 Worker 分配和依赖。
+- `TaskStartedEvent`：将平台步骤更新为运行中。
+- `TaskCompletedEvent`：读取该 Worker 已持久化的结构化结果并完成步骤。
+- `TaskFailedEvent`：记录失败并阻止治理导出。
+- `AllTasksCompletedEvent`：触发平台任务最终状态汇总。
+
+PIPELINE 默认允许失败信息继续流向下游。跨境治理必须增加平台门禁：Catalog 失败时不执行合规和 Listing；合规或 Listing 失败时 Governance 只能生成失败审核结论，不能生成导出包。
+
+### 4.2 Tool 执行边界
+
+Worker 建立 `task_id`、`worker_name`、`process_task_id` 执行上下文。Tool Executor 从该上下文自动生成真实工具事件，Artifact Service 也使用同一个 `process_task_id` 记录文件归属。
+
+### 4.3 商品目录专员
 
 - 导入源文件
 - 解析商品素材
@@ -86,7 +122,7 @@ Tool 是确定性执行边界，不改变现有 Agent、Skill、Tool 职责：
 - 生成商品目录产物
 - 创建事实冲突审批
 
-### 4.2 合规专员
+### 4.4 合规专员
 
 - 加载美国服装合规 Skill
 - 加载 Shopify 商品政策 Skill
@@ -97,7 +133,7 @@ Tool 是确定性执行边界，不改变现有 Agent、Skill、Tool 职责：
 - 生成合规报告
 - 创建缺失事实审批
 
-### 4.3 商品刊登专员
+### 4.5 商品刊登专员
 
 - 加载英文商品本地化 Skill
 - 加载 Shopify Listing Skill
@@ -108,7 +144,7 @@ Tool 是确定性执行边界，不改变现有 Agent、Skill、Tool 职责：
 - 写入 Listing 图谱
 - 生成平台草稿产物
 
-### 4.4 治理审核员
+### 4.6 治理审核员
 
 - 加载商品治理 Skill
 - 校验跨平台事实一致性
@@ -177,7 +213,12 @@ Agent 使用 `agent.progress` 发布面向用户的逐条工作摘要：
 | `tool_call.failed` | `deactivate_toolkit`，状态为失败 |
 | `agent.progress` | `agent_progress` |
 | `artifact.created` | `write_file` |
-| `task.step_changed` | `create_agent`、`assign_task`、`activate_agent`、`task_state`、`deactivate_agent` |
+| `workforce.task_assigned` | `assign_task` |
+| `workforce.task_started` | `activate_agent` |
+| `workforce.task_completed` | `task_state`、`deactivate_agent` |
+| `workforce.task_failed` | `task_state`、`deactivate_agent` |
+
+新任务的 Agent 和步骤生命周期只从 Workforce 回调投影。`task.step_changed` 仅用于兼容历史任务和 Workforce 之外的人工状态修改，不得与同一次 Workforce 回调重复生成 UI 生命周期事件。
 
 投影事件必须保留 `worker_name` 和 `process_task_id`。前端按稳定 ID 直接归属，不通过 Agent 名称模糊匹配，也不通过事件文本猜测归属。
 
@@ -250,6 +291,8 @@ Markdown Artifact 使用 Markdown 阅读器渲染。JSON、CSV、XLSX 和 ZIP �
 - Artifact 事件携带所属 Worker、步骤和类型，避免多个文件打开成同一内容。
 - 缺少步骤归属的数据作为协议错误记录，不使用模糊匹配静默归类。
 
+CAMEL 的 pause、resume 和 snapshot 只保证当前进程内的运行状态，不能替代持久化 Human Approval。审批请求继续写入 SQLite，并将平台任务置为 `waiting_approval` 或 `blocked`。审批决定后创建新的 CAMEL run，从最早受影响步骤重放；进程仍存活时可以调用 pause/resume 优化体验，但正确性不得依赖内存快照。
+
 ## 10. 最终集成验证
 
 不增加零散的小测试。功能完成后运行完整场景：
@@ -281,3 +324,5 @@ Markdown Artifact 使用 Markdown 阅读器渲染。JSON、CSV、XLSX 和 ZIP �
 5. 四个 Agent 工作区展示各自真实业务数据和文件。
 6. 同一任务的不同 Artifact 可独立打开，内容不会串联。
 7. 历史任务兼容且不伪造工具调用。
+8. 实际任务由 CAMEL Workforce PIPELINE 调度，合规和 Listing 在 Catalog 完成后并行，Governance 等待两者汇合。
+9. `task_steps.id` 在 assign、agent、toolkit、file 和 task_state 事件中保持为同一个 `process_task_id`。
