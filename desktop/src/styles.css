@@ -4836,3 +4836,87 @@ button:disabled {
 .eyebrow { color: #697386; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .custom-resizable-handle { background: #e4e8ef; }
 .approval-card { position: fixed; right: 22px; bottom: 22px; z-index: 20; width: min(430px, calc(100vw - 44px)); }
+
+/* Application frame. These selectors intentionally come after the migrated
+   workspace styles because the reference project used .app-shell for a
+   different DOM shape. */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  height: 100vh;
+  gap: 0;
+  padding: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f5f6f8;
+}
+
+.topbar {
+  display: flex;
+  flex: 0 0 64px;
+  height: 64px;
+  align-items: center;
+  padding: 0 22px;
+  border-bottom: 1px solid #e4e7ed;
+  background: rgba(255, 255, 255, .96);
+}
+
+.brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: #fff; background: #344b78; font-weight: 800; }
+.brand-copy { display: grid; gap: 1px; margin-left: 10px; margin-right: auto; }
+.brand-copy strong { color: #202b42; font-size: 14px; }
+.brand-copy span { color: #8a94a7; font-size: 11px; }
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+.topbar-button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; }
+.health { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid #e2e7ef; border-radius: 999px; color: #748096; background: #f9fafc; font-size: 11px; }
+.health i { width: 6px; height: 6px; border-radius: 50%; background: #b4bdcc; }
+.health.online { color: #2d7c55; border-color: #cfeedd; background: #f0fbf5; }
+.health.online i { background: #40bd78; }
+
+.workspace-layout {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.history-rail {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  padding: 20px 14px 14px;
+  border-right: 1px solid #e4e7ed;
+  background: #fbfcfd;
+}
+
+.rail-heading { display: flex; align-items: flex-start; justify-content: space-between; padding: 0 5px 16px; }
+.rail-heading h2 { margin: 4px 0 0; color: #253149; font-size: 17px; }
+.rail-label { color: #9ba5b8; font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.new-project-button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border-color: #536eae; color: #fff; background: #536eae; font-size: 20px; }
+.project-list, .rail-task-list { display: grid; align-content: start; gap: 4px; }
+.project-row, .task-row { display: flex; width: 100%; min-height: 44px; align-items: center; padding: 7px 9px; border-color: transparent; text-align: left; background: transparent; }
+.project-row.selected, .task-row.selected { border-color: #d9e1f0; background: #eef2fa; }
+.project-avatar { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: #536eae; background: #e3e9f6; font-size: 12px; font-weight: 800; }
+.project-row-copy, .task-row-copy { display: grid; min-width: 0; gap: 2px; margin-left: 9px; }
+.project-row-copy strong, .task-row-copy strong { overflow: hidden; color: #33415d; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.project-row-copy small, .task-row-copy small { color: #9aa4b6; font-size: 10px; text-transform: capitalize; }
+.row-chevron { margin-left: auto; color: #aab3c2; }
+.rail-section-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 5px 8px; color: #9ba5b8; font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.task-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #b8c1cf; }
+.task-dot.running, .task-dot.queued { background: #d7a638; box-shadow: 0 0 0 3px #fbf0d5; }
+.task-dot.completed { background: #49af75; }
+.rail-footer { display: grid; gap: 5px; margin-top: auto; padding: 14px 6px 0; border-top: 1px solid #e8ebf0; color: #9ca6b7; font-size: 10px; }
+
+.main-stage { min-width: 0; min-height: 0; overflow: hidden; background: #f5f6f8; }
+.main-stage > .native-workspace-shell { height: 100%; }
+.native-workspace-content > .workflow-panel { width: 100%; height: 100%; min-height: 420px; }
+.native-workspace-content > .workflow-panel .workflow-canvas { min-height: 330px; }
+
+.welcome-state { display: grid; max-width: 680px; min-height: 100%; align-content: center; justify-items: center; margin: auto; padding: 32px; text-align: center; }
+.welcome-state h1 { margin: 10px 0 12px; color: #26334d; font-size: 32px; line-height: 1.2; }
+.welcome-state > p { max-width: 520px; color: #7b879a; line-height: 1.6; }
+.task-composer-card { display: flex; max-width: 850px; margin: 10vh auto 0; padding: 28px; border: 1px solid #e1e6ee; border-radius: 16px; background: #fff; box-shadow: 0 16px 45px rgba(38,55,89,.07); }
+.composer-content { min-width: 0; flex: 1; }
+.composer-content form { display: flex; gap: 8px; margin-top: 20px; }
+.composer-content form input { min-width: 0; flex: 1; }
