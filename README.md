@@ -51,7 +51,7 @@ cd desktop
 npm run dev
 ```
 
-The desktop starts `python -m crossborder_cowork.app` automatically. The API listens on `http://127.0.0.1:8000`, and the Vite UI uses `http://127.0.0.1:7777`.
+The desktop starts `python -m crossborder_cowork.app` automatically. Electron assigns an isolated loopback API port for this application instance, validates the backend identity and Product Event protocol, then opens the Vite UI on `http://127.0.0.1:7777`. This avoids connecting to an older process that happens to occupy port 8000.
 
 The desktop workspace follows the same native workspace pattern as the reference cowork application: projects and tasks live in the history rail, the task workspace receives a versioned Eigent product-event stream, and Product/SKU, compliance, Listing, approval, and Artifact panels read the backend task snapshot. The UI does not parse log text or maintain a second business state source.
 
@@ -89,7 +89,11 @@ Set `CROSSBORDER_DISABLE_LLM=1` to force deterministic execution. API responses 
 ## Workflow
 
 ```text
-Source product files
+Create project (no task is created automatically)
+→ upload project materials or explicitly import the sample catalog
+→ select one or more materials and enter a task objective
+→ create and run the governance task
+→ Source product files
 → Catalog Steward: parse, normalize, classify, detect conflicts
 → platform schema/taxonomy/evidence validation
 → Human Approval for conflicts or missing required facts
@@ -100,12 +104,23 @@ Source product files
 → deterministic listing_package.zip export
 ```
 
+## 使用方法
+
+1. 点击左侧项目区的 `+`，输入项目名称。项目创建后会直接进入项目首页，不会自动创建任务。
+2. 在“项目素材库”上传供应商的 CSV、Excel、JSON、PDF、Markdown、文本或图片资料。素材属于项目，可被多个任务复用。
+3. 没有真实资料时，可点击“导入示例数据”。该操作只在用户点击后执行，不会向新项目自动注入示例。示例源文件位于 `examples/womenswear-us/womenswear-catalog.csv`。
+4. 勾选本次任务要使用的素材，输入治理目标，再点击“创建并运行任务”。未选择素材时平台不会创建或执行任务。
+5. 任务工作区左侧查看四个业务智能体的执行进度，底部切换商品图谱、合规、Listing 和文件区。点击左上角返回按钮可回到项目素材库。
+6. 如果任务要求人工确认，在审批卡片中处理冲突或补齐必要事实。审核通过后，在文件区下载 Shopify CSV、eBay JSON 和最终 `listing_package.zip`。
+
+项目素材与任务生成文件是两类数据：素材是项目级、可复用的输入；Artifact 是任务级、不可变的输出。选择素材创建任务时，平台会保存材料绑定并校验文件哈希，任务不会依赖临时浏览器附件。
+
 ## Final verification
 
 Run only after the complete feature set is implemented:
 
 ```powershell
-python -m pytest tests/test_catalog_listing_integration.py -q --color=no --tb=short
+python -m pytest tests/test_project_material_workflow.py tests/test_catalog_listing_integration.py tests/test_production_scenario_acceptance.py -q --color=no --tb=short
 cd desktop
 npm run type-check
 npm run build
@@ -138,7 +153,7 @@ npm run package:mac-arm64
 npm run package:mac-x64
 ```
 
-The packaging scripts build a native one-file Python backend, include taxonomies, project Skills, and migrations, then package Electron. Installed applications store SQLite data, model settings, uploads, and Artifacts under Electron's per-user application data directory. GitHub Actions builds Windows, macOS arm64, and macOS x64 packages.
+The packaging scripts build a native one-file Python backend, include taxonomies, project Skills, migrations, and the opt-in example catalog, then package Electron. Installed applications store SQLite data, model settings, project materials, and Artifacts under Electron's per-user application data directory. GitHub Actions builds Windows, macOS arm64, and macOS x64 packages.
 
 ## Runtime data
 
@@ -146,7 +161,7 @@ In source development, runtime data is stored under `runtime/`. In an installed 
 
 - `data/crossborder.sqlite3`: projects, tasks, graph, listings, approvals, events, and Artifact metadata.
 - `artifacts/<task-id>/`: reports, channel files, SKU matrix, and listing package.
-- `uploads/<task-id>/`: task source files.
+- `project-materials/<project-id>/<material-id>/`: reusable project source files copied from uploads or the explicit example import.
 - `settings.json`: desktop model configuration metadata.
 
 Canonical Product is the only authoritative product fact source. Channel drafts are read-only projections and cannot directly overwrite canonical facts.

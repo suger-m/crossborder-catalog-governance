@@ -1,12 +1,13 @@
 import type { Artifact, ProductEvent, TaskDetail, TaskStep } from '../api';
 import type { CoworkArtifact, CoworkTask, CoworkTaskDetail } from '../types';
 import type { Task } from '../store/chatStore';
+import { localizedMessage, stepLabel } from '../lib/crossborderLabels';
 
 const WORKERS = [
-  { id: 'catalog_steward_agent', name: 'Catalog Steward', type: 'developer_agent' as const, tools: ['inspect_product', 'classify_product', 'build_sku_graph'] },
-  { id: 'compliance_specialist_agent', name: 'Compliance Specialist', type: 'document_agent' as const, tools: ['load_compliance_skill', 'check_us_apparel', 'validate_marketplace_policy'] },
-  { id: 'listing_operations_agent', name: 'Listing Operations', type: 'document_agent' as const, tools: ['load_localization_skill', 'build_shopify_draft', 'build_ebay_draft'] },
-  { id: 'governance_reviewer_agent', name: 'Governance Reviewer', type: 'document_agent' as const, tools: ['validate_evidence', 'review_release_readiness', 'request_human_approval'] },
+  { id: 'catalog_steward_agent', name: '商品目录专员', type: 'developer_agent' as const, tools: ['inspect_product', 'classify_product', 'build_sku_graph'] },
+  { id: 'compliance_specialist_agent', name: '合规专员', type: 'document_agent' as const, tools: ['load_compliance_skill', 'check_us_apparel', 'validate_marketplace_policy'] },
+  { id: 'listing_operations_agent', name: '商品刊登专员', type: 'document_agent' as const, tools: ['load_localization_skill', 'build_shopify_draft', 'build_ebay_draft'] },
+  { id: 'governance_reviewer_agent', name: '治理审核员', type: 'document_agent' as const, tools: ['validate_evidence', 'review_release_readiness', 'request_human_approval'] },
 ];
 
 function status(value?: string): AgentStatus {
@@ -43,7 +44,7 @@ function taskInfo(step: TaskStep, artifacts: Artifact[]): TaskInfo {
   const result = step.result && Object.keys(step.result).length > 0 ? JSON.stringify(step.result, null, 2) : undefined;
   return {
     id: step.id,
-    content: step.title,
+    content: stepLabel(step.title),
     status: status(step.status) as TaskInfo['status'],
     report: result,
     fileList: files,
@@ -59,7 +60,7 @@ export function projectTask(detail: TaskDetail, events: ProductEvent[]): CoworkT
     kind: 'task',
     created_at: task.updated_at,
     updated_at: task.updated_at,
-    error_message: task.error,
+    error_message: task.error ? localizedMessage(task.error) : '',
     result_json: task.result as Record<string, unknown> | undefined,
   };
 }

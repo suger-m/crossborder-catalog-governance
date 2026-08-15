@@ -28,6 +28,34 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(id)
 );
+CREATE TABLE IF NOT EXISTS project_materials (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  absolute_path TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(id),
+  UNIQUE(project_id, sha256)
+);
+CREATE INDEX IF NOT EXISTS idx_project_materials_project_created
+  ON project_materials(project_id, created_at);
+CREATE TABLE IF NOT EXISTS task_materials (
+  task_id TEXT NOT NULL,
+  material_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(task_id, material_id),
+  FOREIGN KEY(task_id) REFERENCES tasks(id),
+  FOREIGN KEY(material_id) REFERENCES project_materials(id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_materials_task_sequence
+  ON task_materials(task_id, sequence);
 CREATE TABLE IF NOT EXISTS task_steps (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL,

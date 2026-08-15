@@ -94,6 +94,15 @@ class TaskService:
         self.events.publish(task_id, "task.status_changed", "platform", {"task": self._task_public(updated)})
         return updated
 
+    def update_input(self, task_id: str, input_data: dict[str, Any]) -> dict[str, Any]:
+        self.get_task(task_id)
+        timestamp = utc_now()
+        self.db.execute(
+            "UPDATE tasks SET input_json=?,updated_at=? WHERE id=?",
+            (json_dumps(input_data), timestamp, task_id),
+        )
+        return self.get_task(task_id)
+
     def ensure_default_steps(self, task_id: str, steps: list[dict[str, str]]) -> list[dict[str, Any]]:
         existing = self.db.fetchone("SELECT COUNT(*) AS count FROM task_steps WHERE task_id=?", (task_id,))
         if existing and int(existing["count"]) > 0:

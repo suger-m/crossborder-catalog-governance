@@ -24,7 +24,7 @@ export function BottomBar({
       <button
         className="bottom-bar-toggle"
         onClick={onToggleChatBox}
-        title={isChatBoxVisible ? 'Hide ChatBox' : 'Show ChatBox'}
+        title={isChatBoxVisible ? '隐藏对话区' : '显示对话区'}
       >
         {isChatBoxVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
       </button>

@@ -2,20 +2,13 @@
 // This readonly variant renders CAMEL subtask content from the cowork adapter.
 
 import { CircleDashed, CircleDot, FileText, Wrench } from 'lucide-react';
+import { statusLabel, toolLabel } from '@/lib/crossborderLabels';
 
 interface TaskItemProps {
   taskInfo: TaskInfo;
   taskIndex: number;
   active?: boolean;
   onSelect?: () => void;
-}
-
-function statusLabel(status?: string) {
-  if (!status) return 'pending';
-  if (status === 'completed') return 'done';
-  if (status === 'running') return 'running';
-  if (status === 'failed' || status === 'blocked') return 'failed';
-  return status;
 }
 
 export function TaskItem({ taskInfo, taskIndex, active = false, onSelect }: TaskItemProps) {
@@ -41,13 +34,13 @@ export function TaskItem({ taskInfo, taskIndex, active = false, onSelect }: Task
           {taskInfo.report ? (
             <>
               <FileText size={12} />
-              report
+              报告
             </>
           ) : null}
           {toolNames.length > 0 ? (
             <>
               <Wrench size={12} />
-              {toolNames.slice(0, 2).join(', ')}
+              {toolNames.slice(0, 2).map(toolLabel).join('、')}
             </>
           ) : null}
         </small>

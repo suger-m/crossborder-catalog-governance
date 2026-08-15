@@ -2,16 +2,31 @@ import { app, BrowserWindow } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:7777';
-const apiUrl = process.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 let backend: ChildProcess | null = null;
+let runtimeApiUrl = '';
 
-function startBackend() {
+async function availablePort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close((error) => error ? reject(error) : resolve(port));
+    });
+  });
+}
+
+function startBackend(port: number) {
   if (backend) return;
   const env = { ...process.env };
+  env.CROSSBORDER_COWORK_HOST = '127.0.0.1';
+  env.CROSSBORDER_COWORK_PORT = String(port);
   let command: string;
   let args: string[];
   let cwd: string;
@@ -49,19 +64,25 @@ function stopBackend() {
   backend = null;
 }
 
-async function waitForBackend() {
+async function waitForBackend(apiUrl: string) {
+  let lastError = '后端没有响应。';
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       const response = await fetch(`${apiUrl}/health`);
-      if (response.ok) return;
-    } catch {
-      // The packaged backend may need several seconds to unpack on first launch.
+      if (response.ok) {
+        const health = await response.json() as Record<string, unknown>;
+        if (health.app_id === 'crossborder-catalog-cowork' && health.protocol_name === 'eigent' && health.protocol_version === 1) return;
+        lastError = '后端身份或事件协议版本不匹配。';
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
+  throw new Error(lastError);
 }
 
-function createWindow() {
+function createWindow(apiUrl: string) {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -70,16 +91,34 @@ function createWindow() {
     backgroundColor: '#f4f1eb',
     webPreferences: { preload: path.join(__dirname, 'preload.mjs') },
   });
-  if (!app.isPackaged) void window.loadURL(devUrl);
-  else void window.loadFile(path.join(__dirname, '../dist/index.html'));
+  if (!app.isPackaged) {
+    const url = new URL(devUrl);
+    url.searchParams.set('apiBaseUrl', apiUrl);
+    void window.loadURL(url.toString());
+  } else {
+    void window.loadFile(path.join(__dirname, '../dist/index.html'), { query: { apiBaseUrl: apiUrl } });
+  }
+}
+
+function createStartupFailureWindow(message: string) {
+  const window = new BrowserWindow({ width: 720, height: 480, backgroundColor: '#f7f8fa' });
+  const html = `<main style="font-family:system-ui;padding:48px;color:#172033"><h1>应用启动失败</h1><p>${message.replace(/[<>&]/g, '')}</p><p>请关闭其他旧版本应用后重试。</p></main>`;
+  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
 app.whenReady().then(async () => {
-  startBackend();
-  await waitForBackend();
-  createWindow();
+  try {
+    const port = await availablePort();
+    const apiUrl = `http://127.0.0.1:${port}`;
+    startBackend(port);
+    await waitForBackend(apiUrl);
+    runtimeApiUrl = apiUrl;
+    createWindow(apiUrl);
+  } catch (error) {
+    createStartupFailureWindow(error instanceof Error ? error.message : String(error));
+  }
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0 && runtimeApiUrl) createWindow(runtimeApiUrl);
   });
 });
 

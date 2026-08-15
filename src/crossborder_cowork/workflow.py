@@ -14,10 +14,10 @@ class CatalogWorkflow:
     """Ordered Workforce execution for the four business Agents."""
 
     DEFAULT_STEPS = [
-        {"title": "Build canonical Product/SKU catalog", "worker_name": "catalog_steward_agent"},
-        {"title": "Evaluate US and marketplace compliance", "worker_name": "compliance_specialist_agent"},
-        {"title": "Create localized Shopify and eBay drafts", "worker_name": "listing_operations_agent"},
-        {"title": "Review consistency and export package", "worker_name": "governance_reviewer_agent"},
+        {"title": "构建规范 Product/SKU 商品目录", "worker_name": "catalog_steward_agent"},
+        {"title": "执行美国法规与平台合规检查", "worker_name": "compliance_specialist_agent"},
+        {"title": "生成 Shopify 和 eBay 美国站本地化草稿", "worker_name": "listing_operations_agent"},
+        {"title": "审核一致性并生成导出包", "worker_name": "governance_reviewer_agent"},
     ]
 
     def __init__(self, app: Any) -> None:

@@ -31,6 +31,7 @@ import {
   toolPayloadPreview,
 } from '@/lib/coworkPresentation';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
+import { stepLabel, toolLabel } from '@/lib/crossborderLabels';
 import { getWorkflowAgentDisplay, normalizeAgentType } from './agents';
 import { completionReportContent } from './completionReportContent';
 import { MarkDown } from './MarkDown';
@@ -108,14 +109,14 @@ function taskPreviewText(task?: WorkerTaskView) {
 function idleWorkspaceCopy(agent: WorkerNodeView, task?: WorkerTaskView) {
   const id = `${agent.agent_id} ${agent.name}`.toLowerCase();
   const title = id.includes('catalog') || id.includes('steward')
-    ? 'Product / SKU workspace'
+    ? 'Product/SKU 商品工作区'
     : id.includes('compliance')
-      ? 'Compliance workspace'
+      ? '合规工作区'
       : id.includes('listing')
-        ? 'Listing workspace'
+        ? '平台草稿工作区'
         : id.includes('governance') || id.includes('review')
-          ? 'Governance workspace'
-          : 'Agent workspace';
+          ? '治理审核工作区'
+          : '智能体工作区';
   const description = task?.status === 'running'
     ? '正在执行，等待首个有效输出。'
     : task?.status === 'failed' || task?.status === 'blocked'
@@ -131,7 +132,7 @@ function terminalLines(task?: WorkerTaskView): string[] {
   if (!tool) return [];
   const lines = [`$ ${toolCallHeadline(tool.tool_name, asRecord(tool.input_json), asRecord(tool.output_json))}`];
   if (tool.error_message) {
-    lines.push(`ERROR: ${tool.error_message}`);
+    lines.push(`错误：${tool.error_message}`);
   } else {
     lines.push(toolCallMessage(tool.tool_name, asRecord(tool.input_json), asRecord(tool.output_json), tool.error_message, tool.status));
   }
@@ -165,9 +166,7 @@ function toolkitStatusValue(status?: ToolCall['status']): 'running' | 'completed
   return 'pending';
 }
 
-function toolkitMethodLabel(toolName: string): string {
-  return toolName.replace(/_/g, ' ');
-}
+function toolkitMethodLabel(toolName: string): string { return toolLabel(toolName); }
 
 function toolkitDisplayName(tool: ToolCall): string {
   const worker = String(tool.worker_name || '').toLowerCase();
@@ -175,7 +174,7 @@ function toolkitDisplayName(tool: ToolCall): string {
   if (worker.includes('analysis') || tool.tool_name.includes('report')) return '笔记工具包';
   if (worker.includes('reviewer')) return '笔记工具包';
   if (worker.includes('check') || worker.includes('eval') || worker.includes('ops')) return '终端工具包';
-  return 'Toolkit';
+  return '业务工具包';
 }
 
 export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
@@ -286,9 +285,9 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
           <strong>检索证据</strong>
           <p>
             {selectedTask?.fileList?.some((file) => file.artifact_type === 'evidence_bundle')
-              ? 'Evidence Bundle 已生成，点击查看结构化证据。'
+              ? '证据包已生成，点击查看结构化证据。'
               : selectedTask?.status === 'running'
-                ? '正在检索并整理 Evidence Bundle…'
+                ? '正在检索并整理证据包…'
                 : '等待检索证据。'}
           </p>
         </div>
@@ -321,13 +320,13 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
             </button>
             <button className="worker-heading nodrag" onClick={selectAgent} type="button">
               <strong>{agent.name || display.name}</strong>
-              <small>{agentType}</small>
+              <small>{agentType === 'worker' ? '业务智能体' : agentType}</small>
             </button>
             <span className="node-status" title={agent.status}>{statusIcon(agent.status)}</span>
             <button
               className="icon-button compact nodrag"
               onClick={toggleExpanded}
-              title={isExpanded ? '收起 Worker 详情' : '展开 Worker 详情'}
+              title={isExpanded ? '收起智能体详情' : '展开智能体详情'}
               type="button"
             >
               {isExpanded ? <SquareChevronLeft size={16} /> : <SquareCode size={16} />}
@@ -338,7 +337,7 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
             {toolNames.length === 0 ? (
               <span>尚未分配工具包</span>
             ) : (
-              toolNames.slice(0, 6).map((tool) => <span key={tool}># {tool}</span>)
+              toolNames.slice(0, 6).map((tool) => <span key={tool}># {toolLabel(tool)}</span>)
             )}
           </div>
 
@@ -361,7 +360,7 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
 
           <div className="workflow-task-list">
             {filteredTasks.length === 0 ? (
-              <div className="workflow-empty-task">waiting for subtask</div>
+              <div className="workflow-empty-task">等待分配子任务</div>
             ) : (
               filteredTasks.map((task) => (
                 <button
@@ -378,11 +377,11 @@ export function Node({ id, data }: NodeProps<WorkflowFlowNode>) {
                 >
                   <div className="task-card-title">
                     {statusIcon(task.status)}
-                    <span>{taskTitle(task)}</span>
+                    <span>{stepLabel(taskTitle(task))}</span>
                   </div>
                   <small className="workflow-task-meta">
-                    <span>No. {shortTaskId(task.id)}</span>
-                    {task.toolkits.length > 0 ? <span>{task.toolkits.length} tools</span> : null}
+                    <span>编号 {shortTaskId(task.id)}</span>
+                    {task.toolkits.length > 0 ? <span>{task.toolkits.length} 个工具</span> : null}
                   </small>
                   {task.status === 'running' && task.toolkits.length > 0 ? (
                     <div className="workflow-running-toolkit">

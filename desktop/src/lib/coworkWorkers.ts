@@ -1,4 +1,5 @@
 import type { CoworkWorkspaceType } from '@/types';
+import { AGENT_LABELS } from './crossborderLabels';
 
 export type CoworkWorkerId =
   | 'planner'
@@ -20,7 +21,7 @@ export type CoworkWorkerDef = {
 export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
   {
     id: 'planner',
-    label: 'Task Planner',
+    label: '任务规划器',
     workspaceType: 'developer_agent',
     code: 'PL',
     tools: ['list_skills', 'load_skill'],
@@ -28,7 +29,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
   },
   {
     id: 'catalog_steward_agent',
-    label: 'Catalog Steward',
+    label: '商品目录专员',
     workspaceType: 'developer_agent',
     code: 'CS',
     tools: ['inspect_product', 'classify_product', 'build_sku_graph'],
@@ -36,7 +37,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
   },
   {
     id: 'compliance_specialist_agent',
-    label: 'Compliance Specialist',
+    label: '合规专员',
     workspaceType: 'document_agent',
     code: 'CO',
     tools: ['load_compliance_skill', 'check_us_apparel', 'validate_marketplace_policy'],
@@ -44,7 +45,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
   },
   {
     id: 'listing_operations_agent',
-    label: 'Listing Operations',
+    label: '商品刊登专员',
     workspaceType: 'document_agent',
     code: 'LO',
     tools: ['load_localization_skill', 'build_shopify_draft', 'build_ebay_draft'],
@@ -52,7 +53,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
   },
   {
     id: 'governance_reviewer_agent',
-    label: 'Governance Reviewer',
+    label: '治理审核员',
     workspaceType: 'document_agent',
     code: 'GR',
     tools: ['validate_evidence', 'review_release_readiness', 'request_human_approval'],
@@ -67,14 +68,7 @@ export const COWORK_WORKER_MENU_ORDER: string[] = [
   'governance_reviewer_agent',
 ];
 
-export const COWORK_WORKER_LABELS: Record<string, string> = {
-  planner: 'Task Planner',
-  coordinator: 'Coordinator',
-  catalog_steward_agent: 'Catalog Steward',
-  compliance_specialist_agent: 'Compliance Specialist',
-  listing_operations_agent: 'Listing Operations',
-  governance_reviewer_agent: 'Governance Reviewer',
-};
+export const COWORK_WORKER_LABELS: Record<string, string> = AGENT_LABELS;
 
 export const COWORK_WORKER_CODES: Record<string, string> = Object.fromEntries(
   COWORK_WORKER_DEFS.flatMap((def) => {
@@ -100,7 +94,7 @@ export function normalizeCoworkWorkerId(name?: string): string {
 export function coworkWorkerLabel(name?: string): string {
   const normalized = (name || '').replace(/^worker_/, '');
   const key = normalized;
-  return COWORK_WORKER_LABELS[key] || COWORK_WORKER_LABELS[normalized] || normalized || 'Worker';
+  return COWORK_WORKER_LABELS[key] || COWORK_WORKER_LABELS[normalized] || normalized || '业务智能体';
 }
 
 export function buildAuthWorkerList(): Agent[] {

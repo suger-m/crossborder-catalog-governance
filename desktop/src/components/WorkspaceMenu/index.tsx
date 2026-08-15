@@ -62,7 +62,7 @@ function uiAgentTypeLabel(type?: string): string {
   if (type === 'developer_agent') return '终端';
   if (type === 'multi_modal_agent') return '多模态';
   if (type === 'social_media_agent') return '社媒';
-  return 'Worker';
+  return '业务智能体';
 }
 
 function agentClass(agent: WorkspaceAgentEntry): string {

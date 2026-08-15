@@ -60,7 +60,7 @@ export function UserMessageCard({
       data-chat-message-card="user"
       data-message-id={id}
     >
-      <button className="message-card-copy" onClick={handleCopy} title="Copy message" type="button">
+      <button className="message-card-copy" onClick={handleCopy} title="复制消息" type="button">
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
       <div className="user-message-content">
@@ -68,7 +68,7 @@ export function UserMessageCard({
           node.type === 'text' ? (
             <span key={index}>{node.value}</span>
           ) : (
-            <span className="message-skill-chip" key={`${node.name}-${index}`} title="Skill tag">
+            <span className="message-skill-chip" key={`${node.name}-${index}`} title="技能标签">
               <Sparkles size={13} />
               {node.name}
             </span>

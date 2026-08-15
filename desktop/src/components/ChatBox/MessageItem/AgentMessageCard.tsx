@@ -40,7 +40,7 @@ export function AgentMessageCard({
       data-chat-message-card="agent"
       data-message-id={id}
     >
-      <button className="message-card-copy" onClick={handleCopy} title="Copy message" type="button">
+      <button className="message-card-copy" onClick={handleCopy} title="复制消息" type="button">
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
       <MarkDown content={content} />

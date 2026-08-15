@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { TaskState, type TaskStateType } from '@/components/TaskState';
 import type { CoworkTask, CoworkTaskDetail } from '@/types';
 import type { Task as NativeChatTask } from '@/store/chatStore';
+import { statusLabel } from '@/lib/crossborderLabels';
 import { StreamingTaskList } from './StreamingTaskList';
 import { TaskType, type TaskTypeValue } from './TaskType';
 import { TypeCardSkeleton } from './TypeCardSkeleton';
@@ -123,7 +124,7 @@ export function TaskCard({ task, active, nativeTask, onSelectTask, onStartTask, 
           <TaskType type={type} />
           <span className="chat-task-card-status">
             {statusIcon(task.status)}
-            {task.status || 'pending'}
+            {statusLabel(task.status || 'pending')}
           </span>
         </span>
         <strong>{nativeTask?.summaryTask || task.objective || task.id}</strong>
@@ -169,7 +170,7 @@ export function TaskCard({ task, active, nativeTask, onSelectTask, onStartTask, 
 
           {detail?.camel_workforce?.human_interrupts?.filter((item) => item.status === 'pending' && item.interrupt_type === 'approval').map((interrupt) => (
             <div className="chat-task-approval" key={interrupt.id}>
-              <span>{interrupt.prompt || 'Worker 请求执行需要批准的操作。'}</span>
+              <span>{interrupt.prompt || '智能体请求执行需要批准的操作。'}</span>
               <div className="chat-task-approval-actions">
                 <button type="button" onClick={() => void onApproveHumanInterrupt?.(interrupt.id)} disabled={!onApproveHumanInterrupt}>批准</button>
                 <button type="button" onClick={() => void onRejectHumanInterrupt?.(interrupt.id)} disabled={!onRejectHumanInterrupt}>拒绝</button>

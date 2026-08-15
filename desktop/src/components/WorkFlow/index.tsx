@@ -33,7 +33,7 @@ const NODE_GAP = 20;
 const BASE_WORKERS: WorkerNodeView[] = [
   {
     agent_id: 'catalog_steward_agent',
-    name: 'Catalog Steward',
+    name: '商品目录专员',
     type: 'worker',
     workspace_type: 'developer_agent',
     status: 'pending',
@@ -43,7 +43,7 @@ const BASE_WORKERS: WorkerNodeView[] = [
   },
   {
     agent_id: 'compliance_specialist_agent',
-    name: 'Compliance Specialist',
+    name: '合规专员',
     type: 'worker',
     workspace_type: 'document_agent',
     status: 'pending',
@@ -53,7 +53,7 @@ const BASE_WORKERS: WorkerNodeView[] = [
   },
   {
     agent_id: 'listing_operations_agent',
-    name: 'Listing Operations',
+    name: '商品刊登专员',
     type: 'worker',
     workspace_type: 'document_agent',
     status: 'pending',
@@ -63,7 +63,7 @@ const BASE_WORKERS: WorkerNodeView[] = [
   },
   {
     agent_id: 'governance_reviewer_agent',
-    name: 'Governance Reviewer',
+    name: '治理审核员',
     type: 'worker',
     workspace_type: 'document_agent',
     status: 'pending',
@@ -306,15 +306,15 @@ function WorkflowCanvas({ agents, activeAgentId, focusedAgentId, onSelectAgent }
     >
       <div className="section-header workflow-header">
         <div>
-          <div className="eyebrow">WorkFlow</div>
-          <h2>Worker Nodes</h2>
+          <div className="eyebrow">工作流</div>
+          <h2>业务智能体节点</h2>
         </div>
         <div className="workflow-summary">
-          <span>{workflowSummary.all} agents</span>
-          <span>{workflowSummary.tasks} subtasks</span>
-          <span>{workflowSummary.running} running</span>
-          <span>{workflowSummary.completed} done</span>
-          {workflowSummary.failed > 0 ? <span>{workflowSummary.failed} failed</span> : null}
+          <span>{workflowSummary.all} 个智能体</span>
+          <span>{workflowSummary.tasks} 个子任务</span>
+          <span>{workflowSummary.running} 个执行中</span>
+          <span>{workflowSummary.completed} 个已完成</span>
+          {workflowSummary.failed > 0 ? <span>{workflowSummary.failed} 个失败</span> : null}
         </div>
       </div>
       <div

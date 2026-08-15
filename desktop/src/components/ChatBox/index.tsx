@@ -30,6 +30,7 @@ interface ChatBoxProps {
   activeDetail?: CoworkTaskDetail | null;
   onApproveHumanInterrupt?: (interruptId: string) => void | Promise<void>;
   onRejectHumanInterrupt?: (interruptId: string) => void | Promise<void>;
+  monitorOnly?: boolean;
 }
 
 function bottomState(task: CoworkTask | undefined, loading: boolean): BottomBoxState {
@@ -61,6 +62,7 @@ export function ChatBox({
   activeDetail,
   onApproveHumanInterrupt,
   onRejectHumanInterrupt,
+  monitorOnly = false,
 }: ChatBoxProps) {
   const selectedTask = activeTask || tasks.find((task) => task.id === activeTaskId);
   const [files, setFiles] = useState<FileAttachment[]>([]);
@@ -158,7 +160,7 @@ export function ChatBox({
         onRejectHumanInterrupt={onRejectHumanInterrupt}
         onSkipTask={onCancelTask}
       />
-      <BottomBox
+      {monitorOnly ? <div className="task-monitor-footer"><strong>当前任务工作区</strong><p>这里展示执行过程和结果。新建任务或更换素材请返回项目首页。</p></div> : <BottomBox
         state={state}
         objective={objective}
         activeTaskId={activeTaskId}
@@ -174,13 +176,14 @@ export function ChatBox({
         onQueueMessage={queueMessage}
         onRemoveQueuedMessage={removeQueuedMessage}
         onSelectQueuedMessage={selectQueuedMessage}
-      />
+      />}
       <input
         ref={inputRef}
         type="file"
         multiple
         accept=".csv,.json,.jsonl,.md,.txt,.xlsx,.parquet"
         className="sr-only"
+        aria-label="选择数据文件"
         onChange={(event) => onBrowserFiles(event.target.files)}
       />
     </aside>

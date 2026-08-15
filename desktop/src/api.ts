@@ -1,4 +1,6 @@
 export interface Project { id: string; name: string; created_at: string; updated_at: string }
+export interface ProjectMaterial { id: string; project_id: string; file_name: string; relative_path: string; mime_type: string; size_bytes: number; sha256: string; origin: 'upload' | 'example' | string; metadata: Record<string, unknown>; created_at: string }
+export interface HealthStatus { status: string; app_id: string; app_version: string; protocol_name: string; protocol_version: number }
 export interface TaskStep { id: string; sequence: number; worker_name: string; title: string; status: string; result: Record<string, unknown> }
 export interface Task { id: string; project_id: string; objective: string; status: string; current_step?: string; input?: Record<string, unknown>; result?: TaskResult; error?: string; updated_at: string; steps?: TaskStep[] }
 export interface Artifact { id: string; worker_name: string; artifact_type: string; title: string; file_name: string; mime_type: string; size_bytes: number; created_at: string }
@@ -36,19 +38,32 @@ export interface SkillSummary { name: string; description: string }
 export interface SkillDetail { name: string; content: string }
 export type ModelRoleStatus = Record<string, { configured?: boolean; source?: string; model_platform?: string; model_type?: string; ok?: boolean; error?: string }>;
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const runtimeApiUrl = new URLSearchParams(window.location.search).get('apiBaseUrl');
+const baseUrl = (runtimeApiUrl || import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!(init?.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
-  if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
+  if (!response.ok) {
+    const text = await response.text();
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown };
+      detail = typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail || parsed);
+    } catch { /* Keep the response body as-is. */ }
+    throw new Error(`${response.status}: ${detail}`);
+  }
   return (await response.json()) as T;
 }
 export const api = {
-  health: () => request<{ status: string }>('/health'), projects: () => request<{ items: Project[] }>('/api/projects'),
+  health: () => request<HealthStatus>('/health'), projects: () => request<{ items: Project[] }>('/api/projects'),
   createProject: (name: string) => request<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify({ name }) }),
+  projectMaterials: (projectId: string) => request<{ items: ProjectMaterial[] }>(`/api/projects/${encodeURIComponent(projectId)}/materials`),
+  uploadProjectMaterials: (projectId: string, files: File[]) => { const body = new FormData(); files.forEach((file) => body.append('files', file)); return request<{ items: ProjectMaterial[] }>(`/api/projects/${encodeURIComponent(projectId)}/materials`, { method: 'POST', body }); },
+  importExampleMaterials: (projectId: string) => request<{ items: ProjectMaterial[] }>(`/api/projects/${encodeURIComponent(projectId)}/materials/import-example`, { method: 'POST' }),
+  projectMaterialDownloadUrl: (materialId: string) => `${baseUrl}/api/project-materials/${encodeURIComponent(materialId)}/download`,
   tasks: (projectId?: string) => request<{ items: Task[] }>(`/api/tasks${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`),
-  createTask: (projectId: string, objective: string) => request<{ task: Task }>('/api/tasks', { method: 'POST', body: JSON.stringify({ project_id: projectId, objective }) }),
+  createTask: (projectId: string, objective: string, materialIds: string[]) => request<{ task: Task }>('/api/tasks', { method: 'POST', body: JSON.stringify({ project_id: projectId, objective, material_ids: materialIds }) }),
   task: (taskId: string) => request<TaskDetail>(`/api/tasks/${encodeURIComponent(taskId)}`),
   productEvents: (taskId: string, afterSequence = 0) => request<{ items: ProductEvent[]; latest_sequence: number; protocol_name: string; protocol_version: number }>(`/api/tasks/${encodeURIComponent(taskId)}/product-events?after_sequence=${afterSequence}&protocol_version=1`),
   uploadSources: (taskId: string, files: File[]) => { const body = new FormData(); files.forEach((file) => body.append('files', file)); return request<{ task_id: string; source_paths: string[] }>(`/api/tasks/${encodeURIComponent(taskId)}/sources`, { method: 'POST', body }); },

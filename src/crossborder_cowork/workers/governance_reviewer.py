@@ -15,7 +15,7 @@ from ..util import json_dumps
 
 class GovernanceReviewerAgent:
     name = "governance_reviewer_agent"
-    description = "Checks facts, compliance blockers, evidence, versions, consistency, and release readiness."
+    description = "审核商品事实、合规阻塞项、证据、版本、一致性和交付就绪状态。"
 
     def __init__(self, artifacts: ArtifactService, events: EventStore, skills: SkillRegistry, exporter: ExportPackageService) -> None:
         self.artifacts = artifacts

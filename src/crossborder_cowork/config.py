@@ -74,11 +74,13 @@ class Settings:
         self.data_dir = self.runtime_dir / "data"
         self.artifact_dir = self.runtime_dir / "artifacts"
         self.upload_dir = self.runtime_dir / "uploads"
+        self.project_material_dir = self.runtime_dir / "project-materials"
         self.settings_path = self.runtime_dir / "settings.json"
         self.db_path = self.data_dir / "crossborder.sqlite3"
         self.taxonomy_dir = self.base_dir / "configs" / "taxonomy"
         self.skills_dir = self.base_dir / "skills"
-        for path in (self.data_dir, self.artifact_dir, self.upload_dir):
+        self.example_dir = self.base_dir / "examples"
+        for path in (self.data_dir, self.artifact_dir, self.upload_dir, self.project_material_dir):
             path.mkdir(parents=True, exist_ok=True)
 
     @staticmethod

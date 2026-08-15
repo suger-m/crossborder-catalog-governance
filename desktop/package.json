@@ -66,6 +66,10 @@
       {
         "from": "../migrations",
         "to": "migrations"
+      },
+      {
+        "from": "../examples",
+        "to": "examples"
       }
     ],
     "asar": true,

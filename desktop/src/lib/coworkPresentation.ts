@@ -1,4 +1,16 @@
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  inspect_product: '检查商品资料',
+  classify_product: '商品分类',
+  build_sku_graph: '构建 Product/SKU 图谱',
+  load_compliance_skill: '加载合规技能',
+  check_us_apparel: '检查美国服装合规',
+  validate_marketplace_policy: '校验平台政策',
+  load_localization_skill: '加载本地化技能',
+  build_shopify_draft: '生成 Shopify 草稿',
+  build_ebay_draft: '生成 eBay 美国站草稿',
+  validate_evidence: '校验证据',
+  review_release_readiness: '审核交付就绪状态',
+  request_human_approval: '请求人工审批',
   compare_retrieval: 'Compare retrieval',
   get_run_quality_report: 'Get run quality report',
   inspect_analysis_inputs: 'Inspect analysis inputs',
@@ -21,14 +33,14 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 };
 
 const EVENT_DISPLAY_NAMES: Record<string, string> = {
-  task_started: 'Task started',
-  task_completed: 'Task completed',
-  task_failed: 'Task failed',
-  tool_call_started: 'Tool started',
-  tool_call_succeeded: 'Tool succeeded',
-  tool_call_failed: 'Tool failed',
-  workforce_process_completed: 'Run completed',
-  workforce_process_failed: 'Run failed',
+  task_started: '任务已开始',
+  task_completed: '任务已完成',
+  task_failed: '任务失败',
+  tool_call_started: '工具已启动',
+  tool_call_succeeded: '工具执行成功',
+  tool_call_failed: '工具执行失败',
+  workforce_process_completed: '执行已完成',
+  workforce_process_failed: '执行失败',
 };
 
 const HIDDEN_WORKER_EVENT_TYPES = new Set([
@@ -132,7 +144,7 @@ function humanizeToken(value: string): string {
 }
 
 export function toolDisplayName(toolName = ''): string {
-  return TOOL_DISPLAY_NAMES[toolName] || humanizeToken(toolName) || 'Tool call';
+  return TOOL_DISPLAY_NAMES[toolName] || humanizeToken(toolName) || '工具调用';
 }
 
 export function toolInputFocus(input?: Record<string, unknown> | null): string {
@@ -155,7 +167,7 @@ export function toolInputFocus(input?: Record<string, unknown> | null): string {
   if (items.length > 0) {
     const preview = arrayItemPreview(items, 120);
     if (preview) return preview;
-    return `${items.length} item${items.length === 1 ? '' : 's'}`;
+    return `${items.length} 项`;
   }
   return '';
 }
@@ -238,11 +250,11 @@ export function toolPayloadPreview(value: unknown, maxLength = 180): string {
 
     const items = asArray(record.items);
     if (items.length > 0) {
-      return arrayItemPreview(items, maxLength) || `${items.length} item${items.length === 1 ? '' : 's'}`;
+      return arrayItemPreview(items, maxLength) || `${items.length} 项`;
     }
     const evidence = asArray(record.evidence || record.evidence_items || record.results);
     if (evidence.length > 0) {
-      return arrayItemPreview(evidence, maxLength) || `${evidence.length} evidence item${evidence.length === 1 ? '' : 's'}`;
+      return arrayItemPreview(evidence, maxLength) || `${evidence.length} 条证据`;
     }
   }
   return truncateText(stableStringify(parsed), maxLength);
@@ -257,7 +269,7 @@ export function toolOutputSummary(output?: Record<string, unknown> | null): stri
     .map((item) => firstString(item) || stableStringify(item))
     .filter(Boolean);
   if (validationErrors.length > 0) {
-    return truncateText(`Validation failed: ${validationErrors.join('; ')}`, 260);
+    return truncateText(`校验失败：${validationErrors.join('; ')}`, 260);
   }
 
   const summary = firstString(
@@ -284,7 +296,7 @@ export function toolOutputSummary(output?: Record<string, unknown> | null): stri
   ];
   const firstNonEmpty = arrays.find((items) => items.length > 0);
   if (firstNonEmpty) {
-    return arrayItemPreview(firstNonEmpty, 260) || `${firstNonEmpty.length} item${firstNonEmpty.length === 1 ? '' : 's'}`;
+    return arrayItemPreview(firstNonEmpty, 260) || `${firstNonEmpty.length} 项`;
   }
 
   return toolPayloadPreview(output, 260);

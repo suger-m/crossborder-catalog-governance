@@ -32,7 +32,7 @@ export function QueuedBox({
           {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
         </button>
         <strong>{queuedMessages.length}</strong>
-        <span>queued tasks</span>
+        <span>个排队任务</span>
       </header>
 
       {expanded ? (

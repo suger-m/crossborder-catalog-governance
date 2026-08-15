@@ -61,7 +61,7 @@ function agentMessages(task: CoworkTask, nativeTask?: NativeChatTask): Message[]
 }
 
 function messageContent(message: Message): string {
-  return message.summary || message.content || 'Agent message';
+  return message.summary || message.content || '智能体消息';
 }
 
 export function UserQueryGroup({ task, active, nativeTask, onSelectTask, onStartTask, onOpenFile, detail, onApproveHumanInterrupt, onRejectHumanInterrupt }: UserQueryGroupProps) {

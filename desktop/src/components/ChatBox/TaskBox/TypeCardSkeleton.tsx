@@ -21,7 +21,7 @@ export function TypeCardSkeleton({ isTakeControl = false }: TypeCardSkeletonProp
       </div>
       <div className="chat-type-card-toolbar">
         <TaskType type={1} />
-        <span>Tasks</span>
+        <span>任务</span>
         <ChevronDown className="rotated" size={16} />
       </div>
       <div className="chat-type-card-items">

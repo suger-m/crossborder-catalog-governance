@@ -103,10 +103,10 @@ export function FeedbackCard({
           size="xs"
           className="flex-1"
         >
-          Answer Agent
+          回复智能体
         </Button>
         <Button onClick={onSkip} variant="ghost" size="xs" className="flex-1">
-          Skip
+          跳过
         </Button>
       </div>
     </div>

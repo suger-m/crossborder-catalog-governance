@@ -28,42 +28,42 @@ export interface AgentDisplayInfo {
 
 export const agentMap: Record<CoworkWorkflowAgentType, AgentDisplayInfo> = {
   retrieval_worker: {
-    name: 'Retrieval Worker',
+    name: '检索智能体',
     icon: <FileSearch size={16} />,
     tone: 'blue',
   },
   source_ingest_worker: {
-    name: 'Source Ingest Worker',
+    name: '数据采集智能体',
     icon: <FileSearch size={16} />,
     tone: 'teal',
   },
   analysis_worker: {
-    name: 'Analysis Worker',
+    name: '分析智能体',
     icon: <LineChart size={16} />,
     tone: 'green',
   },
   reviewer: {
-    name: 'Reviewer',
+    name: '审核智能体',
     icon: <ShieldCheck size={16} />,
     tone: 'rose',
   },
   reviewer_worker: {
-    name: 'Reviewer',
+    name: '审核智能体',
     icon: <ShieldCheck size={16} />,
     tone: 'rose',
   },
   planner: {
-    name: 'Planner',
+    name: '任务规划器',
     icon: <Bot size={16} />,
     tone: 'slate',
   },
   human: {
-    name: 'Human',
+    name: '人工用户',
     icon: <UserRound size={16} />,
     tone: 'gray',
   },
   worker: {
-    name: 'Worker',
+    name: '业务智能体',
     icon: <Bot size={16} />,
     tone: 'slate',
   },

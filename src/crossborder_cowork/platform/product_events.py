@@ -12,10 +12,10 @@ PROTOCOL_VERSION = 1
 
 def _worker_label(worker_name: str) -> str:
     return {
-        "catalog_steward_agent": "Catalog Steward",
-        "compliance_specialist_agent": "Compliance Specialist",
-        "listing_operations_agent": "Listing Operations",
-        "governance_reviewer_agent": "Governance Reviewer",
+        "catalog_steward_agent": "商品目录专员",
+        "compliance_specialist_agent": "合规专员",
+        "listing_operations_agent": "商品刊登专员",
+        "governance_reviewer_agent": "治理审核员",
     }.get(worker_name, worker_name.replace("_", " ").title())
 
 
@@ -163,18 +163,18 @@ class ProductEventStore:
         elif event_type == "approval.requested":
             approval = dict(payload.get("approval") or {})
             drafts.append(("ask", {
-                "question": str(approval.get("description") or approval.get("title") or "Approval required"),
+                "question": str(approval.get("description") or approval.get("title") or "需要人工审批"),
                 "agent": source,
                 "approval": approval,
             }))
         elif event_type == "approval.decided":
             drafts.append(("human_response", {"approval": dict(payload.get("approval") or {})}))
         elif event_type == "agent.model_completed":
-            drafts.append(("deactivate_toolkit", {"agent_name": _worker_label(source), "worker_name": source, "toolkit_name": "Model Runtime", "method_name": str(payload.get("operation") or "complete"), "message": "Model operation completed", "result": payload}))
+            drafts.append(("deactivate_toolkit", {"agent_name": _worker_label(source), "worker_name": source, "toolkit_name": "模型运行环境", "method_name": str(payload.get("operation") or "complete"), "message": "模型操作已完成", "result": payload}))
         elif event_type == "agent.model_fallback":
-            drafts.append(("deactivate_toolkit", {"agent_name": _worker_label(source), "worker_name": source, "toolkit_name": "Model Runtime", "method_name": str(payload.get("operation") or "fallback"), "message": str(payload.get("error") or "Model fallback"), "result": payload}))
+            drafts.append(("deactivate_toolkit", {"agent_name": _worker_label(source), "worker_name": source, "toolkit_name": "模型运行环境", "method_name": str(payload.get("operation") or "fallback"), "message": str(payload.get("error") or "模型已降级处理"), "result": payload}))
         elif event_type == "workflow.failed":
-            drafts.append(("error", {"summary": str(payload.get("error") or "Workflow failed"), "status": "failed"}))
+            drafts.append(("error", {"summary": str(payload.get("error") or "工作流执行失败"), "status": "failed"}))
         elif event_type == "task.status_changed":
             task = dict(payload.get("task") or {})
             status = str(task.get("status") or "")

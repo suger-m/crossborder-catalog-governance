@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -16,6 +17,11 @@ from .util import json_dumps, sha256_file
 from .platform.product_events import PROTOCOL_NAME, PROTOCOL_VERSION
 
 
+def _sse_json(value: dict[str, Any]) -> str:
+    """Serialize one complete SSE data field without physical line breaks."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
 class ProjectCreate(BaseModel):
     name: str
 
@@ -28,6 +34,7 @@ class TaskStepInput(BaseModel):
 class TaskCreate(BaseModel):
     project_id: str
     objective: str
+    material_ids: list[str] = Field(min_length=1)
     input: dict[str, Any] = Field(default_factory=dict)
     steps: list[TaskStepInput] = Field(default_factory=list)
 
@@ -68,8 +75,14 @@ def create_api(base_dir: Path) -> FastAPI:
         return JSONResponse(status_code=422, content={"detail": str(error)})
 
     @api.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "app_id": "crossborder-catalog-cowork",
+            "app_version": "0.1.0",
+            "protocol_name": PROTOCOL_NAME,
+            "protocol_version": PROTOCOL_VERSION,
+        }
 
     @api.get("/api/projects")
     def list_projects() -> dict[str, Any]:
@@ -79,6 +92,62 @@ def create_api(base_dir: Path) -> FastAPI:
     def create_project(payload: ProjectCreate) -> dict[str, Any]:
         return {"project": application.tasks.create_project(payload.name)}
 
+    @api.get("/api/projects/{project_id}")
+    def get_project(project_id: str) -> dict[str, Any]:
+        project = application.tasks.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        materials = application.materials.list(project_id)
+        tasks = application.tasks.list_tasks(project_id)
+        return {"project": project, "material_count": len(materials), "task_count": len(tasks)}
+
+    @api.get("/api/projects/{project_id}/materials")
+    def list_project_materials(project_id: str) -> dict[str, Any]:
+        if not application.tasks.get_project(project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"items": application.materials.list(project_id)}
+
+    @api.post("/api/projects/{project_id}/materials", status_code=201)
+    async def upload_project_materials(project_id: str, files: list[UploadFile] = File(...)) -> dict[str, Any]:
+        if not application.tasks.get_project(project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        items = []
+        for upload in files:
+            items.append(application.materials.store_bytes(
+                project_id,
+                upload.filename or "material.bin",
+                await upload.read(),
+                origin="upload",
+                mime_type=upload.content_type or "",
+            ))
+        return {"items": items}
+
+    @api.post("/api/projects/{project_id}/materials/import-example", status_code=201)
+    def import_example_materials(project_id: str) -> dict[str, Any]:
+        if not application.tasks.get_project(project_id):
+            raise HTTPException(status_code=404, detail="Project not found")
+        try:
+            return {"items": application.materials.import_example(project_id)}
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @api.get("/api/project-materials/{material_id}/download")
+    def download_project_material(material_id: str) -> FileResponse:
+        material = application.materials.get(material_id)
+        if not material:
+            raise HTTPException(status_code=404, detail="Project material not found")
+        path = Path(material["absolute_path"]).resolve()
+        try:
+            path.relative_to(application.materials.root)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail="Project material path is invalid") from error
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Project material file is unavailable")
+        digest, size = sha256_file(path)
+        if digest != material["sha256"] or size != material["size_bytes"]:
+            raise HTTPException(status_code=409, detail="Project material integrity check failed")
+        return FileResponse(path, media_type=material["mime_type"], filename=material["file_name"])
+
     @api.get("/api/tasks")
     def list_tasks(project_id: str | None = None) -> dict[str, Any]:
         return {"items": application.tasks.list_tasks(project_id)}
@@ -86,12 +155,19 @@ def create_api(base_dir: Path) -> FastAPI:
     @api.post("/api/tasks", status_code=201)
     def create_task(payload: TaskCreate) -> dict[str, Any]:
         try:
+            materials = application.materials.validate_project_materials(payload.project_id, payload.material_ids)
+            input_data = dict(payload.input)
+            input_data.pop("source_paths", None)
             task = application.tasks.create_task(
                 payload.project_id,
                 payload.objective,
-                payload.input,
+                input_data,
                 [step.model_dump() for step in payload.steps] or application.workflow.DEFAULT_STEPS,
             )
+            application.materials.bind_task(task["id"], payload.project_id, [item["id"] for item in materials])
+            input_data["material_ids"] = [item["id"] for item in materials]
+            input_data["source_paths"] = application.materials.task_paths(task["id"])
+            task = application.tasks.update_input(task["id"], input_data)
         except KeyError as error:
             raise _not_found(error) from error
         return {"task": task}
@@ -102,26 +178,38 @@ def create_api(base_dir: Path) -> FastAPI:
             application.tasks.get_task(task_id)
         except KeyError as error:
             raise _not_found(error) from error
-        task_root = application.settings.upload_dir / task_id
-        task_root.mkdir(parents=True, exist_ok=True)
-        paths: list[str] = []
-        for upload in files:
-            name = Path(upload.filename or "upload.bin").name
-            destination = task_root / name
-            destination.write_bytes(await upload.read())
-            paths.append(str(destination))
         task = application.tasks.get_task(task_id)
+        material_ids: list[str] = []
+        for upload in files:
+            item = application.materials.store_bytes(
+                task["project_id"], upload.filename or "material.bin", await upload.read(),
+                origin="upload", mime_type=upload.content_type or "",
+            )
+            material_ids.append(item["id"])
+        application.materials.bind_task(task_id, task["project_id"], material_ids, replace=False)
+        paths = application.materials.task_paths(task_id)
         input_data = dict(task.get("input") or {})
+        input_data["material_ids"] = [item["id"] for item in application.materials.task_materials(task_id)]
         input_data["source_paths"] = paths
-        application.database.execute("UPDATE tasks SET input_json=?,updated_at=? WHERE id=?", (json_dumps(input_data), __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(), task_id))
+        application.tasks.update_input(task_id, input_data)
         return {"task_id": task_id, "source_paths": paths}
 
     @api.post("/api/tasks/{task_id}/run")
     def run_task(task_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
         try:
-            application.tasks.get_task(task_id)
+            task = application.tasks.get_task(task_id)
         except KeyError as error:
             raise _not_found(error) from error
+        try:
+            paths = application.materials.task_paths(task_id)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        if not paths:
+            raise HTTPException(status_code=409, detail="Select at least one project material before running the task")
+        input_data = dict(task.get("input") or {})
+        input_data["source_paths"] = paths
+        input_data["material_ids"] = [item["id"] for item in application.materials.task_materials(task_id)]
+        application.tasks.update_input(task_id, input_data)
         background_tasks.add_task(application.workflow.run_task, task_id)
         return {"task_id": task_id, "status": "queued"}
 
@@ -200,7 +288,7 @@ def create_api(base_dir: Path) -> FastAPI:
                 if events:
                     for event in events:
                         cursor = event["sequence"]
-                        yield f"id: {cursor}\nevent: {event['event_type']}\ndata: {json_dumps(event)}\n\n"
+                        yield f"id: {cursor}\nevent: {event['event_type']}\ndata: {_sse_json(event)}\n\n"
                 else:
                     yield ": heartbeat\n\n"
                 await asyncio.sleep(1)
@@ -252,7 +340,7 @@ def create_api(base_dir: Path) -> FastAPI:
                 if items:
                     for item in items:
                         cursor = int(item["sequence"])
-                        yield f"id: {cursor}\nevent: cowork_product_event\ndata: {json_dumps(item)}\n\n"
+                        yield f"id: {cursor}\nevent: cowork_product_event\ndata: {_sse_json(item)}\n\n"
                 else:
                     yield ": heartbeat\n\n"
                 await asyncio.sleep(0.5)

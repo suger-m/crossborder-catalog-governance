@@ -25,13 +25,13 @@ interface PromptExample {
 
 const defaultPromptExamples: PromptExample[] = [
   {
-    title: '证据扫描',
-    prompt: '检索大码服饰笔记中的版型、面料与穿搭证据，并总结最强购买信号。',
+    title: '目录治理',
+    prompt: '整理供应商商品资料，建立规范 Product/SKU 事实并标记缺失字段。',
     icon: <Search size={15} />,
   },
   {
-    title: '质量复核',
-    prompt: '复核洞察报告中的证据缺口、弱结论与后续核查项，再给出最终结论。',
+    title: '合规复核',
+    prompt: '复核美国服装合规、平台字段和证据缺口，并给出交付结论。',
     icon: <BarChart3 size={15} />,
   },
 ];
@@ -99,10 +99,10 @@ export function ExpandedInputBox({
             {remainingCount > 0 ? <div className="expanded-agent-more">+{remainingCount}</div> : null}
             {agentList.length === 0 ? <span className="expanded-agent-empty">暂未分配智能体</span> : null}
             <button
-              aria-label="Worker 分配"
+              aria-label="智能体分配"
               className="expanded-add-worker-button"
               disabled
-              title="Worker 分配由 CAMEL Workforce 控制"
+              title="智能体分配由 CAMEL 智能体团队控制"
               type="button"
             >
               <Plus size={14} />

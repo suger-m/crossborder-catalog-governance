@@ -14,7 +14,7 @@ from ..util import json_dumps
 
 class CatalogStewardAgent:
     name = "catalog_steward_agent"
-    description = "Owns canonical Product/SKU facts and classification candidates."
+    description = "负责规范 Product/SKU 商品事实和分类候选。"
 
     def __init__(self, intake: IntakeService, graph: CatalogGraphService, artifacts: ArtifactService, approvals: ApprovalService, events: EventStore, skills: SkillRegistry) -> None:
         self.intake = intake

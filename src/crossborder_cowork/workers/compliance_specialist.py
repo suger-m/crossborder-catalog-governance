@@ -13,7 +13,7 @@ from ..util import json_dumps
 
 class ComplianceSpecialistAgent:
     name = "compliance_specialist_agent"
-    description = "Applies US apparel law and marketplace-policy skills without changing product facts."
+    description = "在不修改商品事实的前提下，应用美国服装法规与平台政策技能。"
 
     def __init__(self, service: UsApparelComplianceService, artifacts: ArtifactService, events: EventStore, skills: SkillRegistry, approvals: ApprovalService) -> None:
         self.service = service

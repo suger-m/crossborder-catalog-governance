@@ -22,6 +22,7 @@ from .workers.listing_operations import ListingOperationsAgent
 from .workers.governance_reviewer import GovernanceReviewerAgent
 from .workflow import CatalogWorkflow
 from .platform.model_runtime import AgentModelRuntime
+from .platform.materials import ProjectMaterialService
 
 
 class CrossborderApplication:
@@ -34,6 +35,9 @@ class CrossborderApplication:
         self.artifacts = ArtifactService(self.database, self.settings.artifact_dir, self.events)
         self.approvals = ApprovalService(self.database, self.events)
         self.tasks = TaskService(self.database, self.events)
+        self.materials = ProjectMaterialService(
+            self.database, self.settings.project_material_dir, self.settings.example_dir,
+        )
         self.skills = SkillRegistry(self.settings.skills_dir)
         self.model_runtime = AgentModelRuntime(self.settings)
         self.workers = WorkerRegistry()
@@ -50,9 +54,9 @@ class CrossborderApplication:
         for worker in (self.catalog_steward, self.compliance_specialist, self.listing_operations, self.governance_reviewer):
             self.workers.register(worker.name, worker.description)
         for tool_name, description in {
-            "parse_product_sources": "Parse catalog files and create traceable product candidates",
-            "check_product_compliance": "Run deterministic US and marketplace policy checks",
-            "create_listing_package": "Create deterministic Shopify/eBay import package",
+            "parse_product_sources": "解析商品目录文件并创建可追溯的商品候选",
+            "check_product_compliance": "执行确定性的美国法规与平台政策检查",
+            "create_listing_package": "创建确定性的 Shopify/eBay 导入包",
         }.items():
             self.tools.register(tool_name, description)
 

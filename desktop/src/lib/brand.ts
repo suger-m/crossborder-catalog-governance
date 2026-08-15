@@ -1,6 +1,6 @@
 import logoUrl from '@/assets/logo/newlogo.png';
 
-export const PRODUCT_NAME = 'sincerely';
+export const PRODUCT_NAME = '跨境商品协作平台';
 export const PRODUCT_LOGO_URL = logoUrl;
 export const PRODUCT_TAGLINE = '电商协同工作台';
 export const WELCOME_TITLE = `欢迎使用 ${PRODUCT_NAME}`;

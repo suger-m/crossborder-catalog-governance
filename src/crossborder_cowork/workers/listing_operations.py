@@ -19,7 +19,7 @@ from ..util import stable_id
 
 class ListingOperationsAgent:
     name = "listing_operations_agent"
-    description = "Creates localized Shopify and eBay US drafts from canonical product versions."
+    description = "基于规范商品版本生成本地化的 Shopify 和 eBay 美国站草稿。"
 
     def __init__(self, db: Database, artifacts: ArtifactService, events: EventStore, skills: SkillRegistry, model_runtime: AgentModelRuntime, graph: CatalogGraphService) -> None:
         self.db = db
