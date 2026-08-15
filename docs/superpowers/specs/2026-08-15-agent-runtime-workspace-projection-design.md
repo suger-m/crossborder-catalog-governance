@@ -51,17 +51,16 @@ Agent 子任务卡片主要展示逐条出现的公开工作摘要，例如：
 
 ## 4. 运行架构
 
-当前 `CatalogWorkflow` 只是按固定顺序直接调用四个 Python 类，并非 CAMEL Workforce。本次必须删除它的串行执行职责，改为真实的 CAMEL Workforce 任务图。确定性业务操作通过统一 Tool Registry 和 Tool Executor 执行：
+当前 `CatalogWorkflow` 只是按固定顺序直接调用四个 Python 类，并非 CAMEL Workforce。本次必须删除它的串行执行职责，改为真实的 CAMEL Workforce 动态任务图。确定性业务操作通过统一 Tool Registry 和 Tool Executor 执行：
 
 ```text
-平台任务
-  -> CAMEL Workforce (PIPELINE)
-       -> 商品目录专员 Worker
-            -> 发布 agent.progress
-            -> Tool Executor 执行确定性业务服务
-       -> 合规专员 Worker ─┐
-       -> 商品刊登专员 Worker ─┤ 商品目录完成后并行
-       -> 治理审核员 Worker <- 等待合规和刊登完成
+用户目标 + 显式选择的素材/资源 + 项目资源清单
+  -> CAMEL Workforce 规划 1..N 个任务
+       -> 按能力选择业务 Worker
+       -> 建立实际需要的依赖边
+       -> Worker 发布 agent.progress
+       -> Tool Executor 执行确定性业务服务
+       -> Worker 按需读取项目资源并写入新版本资源
   -> Artifact Service 生成文件
   -> Product Event 投影
 ```
@@ -78,25 +77,46 @@ Tool 是确定性执行边界，不改变现有 Agent、Skill、Tool 职责：
 ### 4.1 CAMEL Workforce 运行时
 
 - `camel-ai==0.2.90` 是产品必需依赖，不再是可选 extras。
-- 每次平台任务创建一个独立的 `CrossborderWorkforce`，使用 `WorkforceMode.PIPELINE`。
+- 每次平台任务创建一个独立的 `CrossborderWorkforce`。Workforce 根据目标和项目资源清单生成本次任务所需的 1..N 个子任务，不使用固定四步 PIPELINE。
 - 四个业务角色实现为 CAMEL `Worker` 节点；Worker 负责领取 CAMEL Task、建立执行上下文并调用业务 Agent。
 - 平台数据库 `task_steps.id` 直接作为 CAMEL `Task.id` 和 Eigent `process_task_id`，不再通过 Agent 名称模糊匹配。
 - CAMEL Task 的 `additional_info` 保存平台任务 ID、稳定 Worker ID 和步骤类型。
-- `CrossborderWorkforce` 按稳定 Worker ID 分配任务；模型不得把合规任务随机交给刊登 Agent。
-- `CatalogWorkflow` 只保留创建任务图、启动 Workforce、汇总最终状态和审批后重放的应用服务职责，不再直接串行调用四个 Agent。
+- `CrossborderWorkforce` 根据 Worker 能力描述分配任务，并由平台校验所选 Worker 是否存在、是否具有所需 Tool/Skill 权限。
+- `CatalogWorkflow` 只保留启动 Workforce、持久化动态任务图、汇总最终状态和审批后重放的应用服务职责，不再直接串行调用四个 Agent。
 
-固定依赖图为：
+任务图按目标动态生成，例如：
 
 ```text
-catalog_step
-  ├─> compliance_step ─┐
-  └─> listing_step ────┤
-                       └─> governance_step
+“审核已有 eBay 草稿”
+  -> 治理审核员
+
+“检查美国服装合规风险”
+  -> 合规专员
+  -> 仅在缺少规范商品事实时增加商品目录专员依赖
+
+“生成 Shopify 草稿”
+  -> 已有 active Canonical Product：商品刊登专员
+  -> 没有可用 Canonical Product：商品目录专员 -> 商品刊登专员
+
+“完成美国市场商品目录交付”
+  -> 商品目录专员
+       ├─> 合规专员 ─┐
+       └─> 商品刊登专员 ─┤
+                         └─> 治理审核员
 ```
 
-Listing 只从 Canonical Product 读取商品事实，因此可以与合规检查并行。Governance 必须等待合规和 Listing 两个分支完成。
+平台不要求每个任务包含全部四个 Agent。计划校验只负责以下不变量：
 
-CAMEL `Task.result` 只保存简短业务摘要、步骤状态和 Artifact ID。完整 Product、ComplianceResult 和 ListingDraft 继续保存在 SQLite 步骤结果、Product Graph 和 Artifact 中，不通过 CAMEL 依赖字符串传递。
+- Worker ID 必须存在。
+- 依赖图必须无环，且依赖的步骤必须属于本次任务。
+- 显式引用的素材和项目资源必须存在且属于当前项目。
+- Worker 只能使用已授权的 Tool 和可见 Skill。
+- taxonomy、图 schema、证据范围和交付状态转换继续由确定性平台代码校验。
+- 第一版不得创建 Shopify 或 eBay 自动发布任务。
+
+Listing 只从 Canonical Product 资源读取商品事实。完整交付目标中，Listing 可以与合规检查并行，Governance 等待本次计划实际创建的合规和 Listing 依赖完成；独立审核目标则直接读取项目中已有的 active 资源。
+
+CAMEL `Task.result` 只保存简短业务摘要、步骤状态和 `output_resource_ids`。完整 Product、ComplianceResult 和 ListingDraft 继续保存在项目级 SQLite 事实表、Product Graph 和 Artifact 中，不通过 CAMEL 依赖字符串传递。
 
 Workforce 原生回调是步骤生命周期的来源：
 
@@ -106,13 +126,56 @@ Workforce 原生回调是步骤生命周期的来源：
 - `TaskFailedEvent`：记录失败并阻止治理导出。
 - `AllTasksCompletedEvent`：触发平台任务最终状态汇总。
 
-PIPELINE 默认允许失败信息继续流向下游。跨境治理必须增加平台门禁：Catalog 失败时不执行合规和 Listing；合规或 Listing 失败时 Governance 只能生成失败审核结论，不能生成导出包。
+依赖步骤失败或引用资源不可用时，平台将下游步骤置为阻塞，不把错误文本当作业务输入继续执行。Governance 可以独立审核已有资源；但当本次目标要求生成导出包时，任何合规阻塞、待审批事实或过期 Listing 都必须阻止导出。
 
-### 4.2 Tool 执行边界
+### 4.2 项目上下文与资源解析
+
+Worker 之间不传递完整 Python 字典，也不创建一个无限膨胀的 `context_json`。项目上下文由四类持久化数据组成：
+
+```text
+原始素材       runtime/project-materials/ + project_materials
+结构化事实     Product/SKU/Fact/Listing/Graph SQLite 表
+生成文件       runtime/artifacts/ + artifacts
+运行历史       tasks + task_steps + events/product_events
+```
+
+新增 `project_resources` 作为轻量资源索引，只保存资源指针和治理信息：
+
+- `id`、`project_id`、`resource_type`、`logical_key`。
+- `owner_worker_name`、`source_task_id`、`source_step_id`。
+- `storage_kind`、`storage_ref`，指向事实表记录、Artifact 或素材。
+- `version`、`status`、`metadata`、创建与更新时间。
+
+资源状态为 `candidate`、`active`、`superseded`、`blocked` 或 `rejected`。同一 `project_id + resource_type + logical_key` 可以有多个版本，但只有通过平台状态转换的版本可成为 `active`。
+
+`ProjectContextService` 为 Planner 生成紧凑资源清单，并按以下优先级解析 Worker 输入：
+
+```text
+用户显式选择的资源
+> 本次直接上游步骤输出资源
+> 当前项目 active 资源
+> 无可用输入
+```
+
+不得仅按创建时间选择“最新 Artifact”。跨任务复用必须按项目、资源类型、逻辑键、版本和状态解析；任何资源都不得跨项目读取。
+
+Planner 只接收资源清单，不接收完整文件或结构化结果。Agent 通过授权 Tool 按需读取：
+
+- `list_project_resources`
+- `get_canonical_products`
+- `get_product_facts`
+- `get_listing_drafts`
+- `get_artifact_manifest`
+- `read_artifact_text`，支持分页或字符范围
+- `get_pending_approvals`
+
+Product、SKU、Listing 和 Artifact 必须增加 `project_id` 所有权。稳定业务 ID 必须包含项目命名空间，避免两个项目导入相同 SKU 时互相覆盖。
+
+### 4.3 Tool 执行边界
 
 Worker 建立 `task_id`、`worker_name`、`process_task_id` 执行上下文。Tool Executor 从该上下文自动生成真实工具事件，Artifact Service 也使用同一个 `process_task_id` 记录文件归属。
 
-### 4.3 商品目录专员
+### 4.4 商品目录专员
 
 - 导入源文件
 - 解析商品素材
@@ -122,7 +185,7 @@ Worker 建立 `task_id`、`worker_name`、`process_task_id` 执行上下文。To
 - 生成商品目录产物
 - 创建事实冲突审批
 
-### 4.4 合规专员
+### 4.5 合规专员
 
 - 加载美国服装合规 Skill
 - 加载 Shopify 商品政策 Skill
@@ -133,7 +196,7 @@ Worker 建立 `task_id`、`worker_name`、`process_task_id` 执行上下文。To
 - 生成合规报告
 - 创建缺失事实审批
 
-### 4.5 商品刊登专员
+### 4.6 商品刊登专员
 
 - 加载英文商品本地化 Skill
 - 加载 Shopify Listing Skill
@@ -144,7 +207,7 @@ Worker 建立 `task_id`、`worker_name`、`process_task_id` 执行上下文。To
 - 写入 Listing 图谱
 - 生成平台草稿产物
 
-### 4.6 治理审核员
+### 4.7 治理审核员
 
 - 加载商品治理 Skill
 - 校验跨平台事实一致性
@@ -224,7 +287,7 @@ Agent 使用 `agent.progress` 发布面向用户的逐条工作摘要：
 
 ## 6. 步骤结果、摘要与报告
 
-步骤完成后保留结构化 `step.result`，供平台状态恢复和 Agent 专属工作区使用，但它不直接成为 UI 报告。
+步骤完成后保留紧凑结构化 `step.result`，只包含状态、业务摘要、关键计数和 `output_resource_ids`，供平台恢复运行时状态；完整业务数据从这些资源 ID 指向的事实表和 Artifact 读取，它不直接成为 UI 报告。
 
 每个步骤额外提供紧凑完成摘要，至少包含：
 
@@ -248,11 +311,11 @@ Markdown Artifact 使用 Markdown 阅读器渲染。JSON、CSV、XLSX 和 ZIP �
 
 ### 7.1 数据所有权
 
-- 商品目录专员：读取规范 Product/SKU API、商品目录步骤结果及该 Worker 的 Artifact。
-- 合规专员：读取合规步骤结果、待审批项及合规 Artifact。
-- 商品刊登专员：读取刊登步骤结果及 Shopify/eBay Artifact。
-- 治理审核员：读取治理步骤结果、交付状态、审批和导出 Artifact。
-- 文件工作区：读取任务源文件与全部 Artifact，并按虚拟目录分类。
+- 商品目录专员：读取当前项目规范 Product/SKU、所属步骤输出资源及该 Worker 的 Artifact。
+- 合规专员：读取当前项目合规资源、待审批项及合规 Artifact。
+- 商品刊登专员：读取当前项目 Listing Draft 资源及 Shopify/eBay Artifact。
+- 治理审核员：读取当前项目交付状态、审批、审核和导出 Artifact。
+- 文件工作区：读取当前项目素材与 Artifact，并按虚拟目录分类；本次任务生成或使用的资源应有明确标记。
 
 前端不得让所有 Agent 工作区共享顶层 `task.result` 后自行猜测字段。
 
@@ -270,13 +333,15 @@ Markdown Artifact 使用 Markdown 阅读器渲染。JSON、CSV、XLSX 和 ZIP �
 
 ## 8. 前端状态投影
 
-桌面端使用 Product Events 和任务快照构建以下状态：
+桌面端使用后端任务快照作为初始基线，并按 sequence 归约 Product Events。Product Events 是运行中增量状态的唯一来源，构建以下状态：
 
 - Agent 和子任务生命周期。
 - 按 `process_task_id` 分组的 `agent.progress` 列表。
 - 按 `tool_call_id` 合并的真实工具状态。
 - 按 Worker 和步骤归属的 Artifact。
 - 步骤紧凑完成摘要。
+
+Reducer 必须以 `process_task_id` 定位动态步骤，以 `tool_call_id` 合并工具生命周期，以 `artifact_id` 合并文件。前端不得预建固定四步，也不得根据 Worker 名称或文本内容合成步骤、工具和文件归属。
 
 静态 Worker 配置只保留名称、图标、说明和能力描述，不参与推断工具是否执行。
 
@@ -298,15 +363,16 @@ CAMEL 的 pause、resume 和 snapshot 只保证当前进程内的运行状态，
 不增加零散的小测试。功能完成后运行完整场景：
 
 ```text
-创建项目
--> 导入女性服装素材
--> 创建并执行任务
--> 观察四个 Agent 的逐条工作摘要
--> 检查真实工具名称和状态
+创建项目并导入女性服装素材
+-> 执行完整交付目标，观察动态多 Agent 任务图
+-> 检查逐条工作摘要及真实工具名称和状态
 -> 确认 Agent 卡片不再出现完整 JSON
--> 分别打开四个 Agent 专属工作区
--> 打开 Markdown 报告与其他生成文件
+-> 分别打开参与本次任务的 Agent 专属工作区
+-> 打开多个 Markdown 报告与其他生成文件
 -> 刷新页面并确认事件状态完整恢复
+-> 在同一项目中单独执行“审核已有 eBay 草稿”
+-> 确认只创建治理审核步骤并复用 active 项目资源
+-> 新建第二个项目导入同 SKU，确认资源完全隔离
 ```
 
 同时执行：
@@ -321,8 +387,9 @@ CAMEL 的 pause、resume 和 snapshot 只保证当前进程内的运行状态，
 2. Agent 工作摘要逐条实时显示，刷新后仍可恢复。
 3. 工具区域不显示耗时、参数或结果内容。
 4. Agent 卡片不再把结构化结果渲染为大段 JSON。
-5. 四个 Agent 工作区展示各自真实业务数据和文件。
+5. 参与任务的 Agent 工作区展示各自真实业务数据和文件，未参与 Agent 明确显示未执行状态。
 6. 同一任务的不同 Artifact 可独立打开，内容不会串联。
 7. 历史任务兼容且不伪造工具调用。
-8. 实际任务由 CAMEL Workforce PIPELINE 调度，合规和 Listing 在 Catalog 完成后并行，Governance 等待两者汇合。
+8. 实际任务由 CAMEL Workforce 动态调度；单 Agent 目标只创建一个步骤，完整目标按依赖并行执行适用步骤。
 9. `task_steps.id` 在 assign、agent、toolkit、file 和 task_state 事件中保持为同一个 `process_task_id`。
+10. Worker 可跨任务复用同一项目的 active 资源，但不能读取其他项目资源。
