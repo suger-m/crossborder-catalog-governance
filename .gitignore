@@ -14,3 +14,4 @@ desktop/resources/prebuilt/
 *.log
 .env
 .superpowers/
+.worktrees/
