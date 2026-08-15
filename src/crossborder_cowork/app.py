@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from .application import CrossborderApplication, build_application
 from .util import json_dumps, sha256_file
+from .platform.product_events import PROTOCOL_NAME, PROTOCOL_VERSION
 
 
 class ProjectCreate(BaseModel):
@@ -206,6 +207,59 @@ def create_api(base_dir: Path) -> FastAPI:
 
         return StreamingResponse(
             generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        )
+
+    @api.get("/api/tasks/{task_id}/product-events")
+    def list_product_events(
+        task_id: str, after_sequence: int = 0, limit: int = 200,
+        protocol_version: int = PROTOCOL_VERSION,
+    ) -> dict[str, Any]:
+        try:
+            application.tasks.get_task(task_id)
+        except KeyError as error:
+            raise _not_found(error) from error
+        if protocol_version != PROTOCOL_VERSION:
+            raise HTTPException(
+                status_code=409,
+                detail={"expected_protocol_version": PROTOCOL_VERSION, "received_protocol_version": protocol_version},
+            )
+        return {
+            "items": application.product_events.list_after(task_id, after_sequence, limit),
+            "latest_sequence": application.product_events.latest_sequence(task_id),
+            "protocol_name": PROTOCOL_NAME,
+            "protocol_version": PROTOCOL_VERSION,
+        }
+
+    @api.get("/api/tasks/{task_id}/product-events/stream")
+    async def stream_product_events(
+        request: Request, task_id: str, after_sequence: int = 0,
+        protocol_version: int = PROTOCOL_VERSION,
+    ) -> StreamingResponse:
+        try:
+            application.tasks.get_task(task_id)
+        except KeyError as error:
+            raise _not_found(error) from error
+        if protocol_version != PROTOCOL_VERSION:
+            raise HTTPException(
+                status_code=409,
+                detail={"expected_protocol_version": PROTOCOL_VERSION, "received_protocol_version": protocol_version},
+            )
+
+        async def generate_product_events() -> AsyncIterator[str]:
+            cursor = max(after_sequence, 0)
+            while not await request.is_disconnected():
+                items = application.product_events.list_after(task_id, cursor)
+                if items:
+                    for item in items:
+                        cursor = int(item["sequence"])
+                        yield f"id: {cursor}\nevent: cowork_product_event\ndata: {json_dumps(item)}\n\n"
+                else:
+                    yield ": heartbeat\n\n"
+                await asyncio.sleep(0.5)
+
+        return StreamingResponse(
+            generate_product_events(), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     @api.get("/api/artifacts/{artifact_id}/download")

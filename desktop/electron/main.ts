@@ -37,6 +37,18 @@ function startBackend() {
   backend.once('exit', () => { backend = null; });
 }
 
+function stopBackend() {
+  if (!backend) return;
+  const pid = backend.pid;
+  if (pid && process.platform === 'win32') {
+    const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' });
+    killer.unref();
+  } else {
+    backend.kill();
+  }
+  backend = null;
+}
+
 async function waitForBackend() {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
@@ -72,8 +84,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
-  backend?.kill();
-  backend = null;
+  stopBackend();
 });
 
 app.on('window-all-closed', () => {

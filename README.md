@@ -53,6 +53,8 @@ npm run dev
 
 The desktop starts `python -m crossborder_cowork.app` automatically. The API listens on `http://127.0.0.1:8000`, and the Vite UI uses `http://127.0.0.1:7777`.
 
+The desktop workspace follows the same native workspace pattern as the reference cowork application: projects and tasks live in the history rail, the task workspace receives a versioned Eigent product-event stream, and Product/SKU, compliance, Listing, approval, and Artifact panels read the backend task snapshot. The UI does not parse log text or maintain a second business state source.
+
 To run only the backend:
 
 ```powershell

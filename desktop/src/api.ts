@@ -8,6 +8,20 @@ export interface ListingDraft { id: string; product_id: string; platform: 'shopi
 export interface TaskResult { compliance?: { results?: Array<{ legal?: Finding[]; shopify?: Finding[]; ebay?: Finding[] }> }; listing?: { shopify?: ListingDraft[]; ebay?: ListingDraft[] }; governance?: { decision?: { findings?: Finding[]; status?: string; ready_for_export?: boolean } } }
 export interface TaskDetail { task: Task; events: TaskEvent[]; artifacts: Artifact[]; approvals: Approval[] }
 export interface TaskEvent { sequence: number; event_type: string; worker_name: string; payload: Record<string, unknown>; created_at: string }
+export interface ProductEvent {
+  id: string;
+  task_id: string;
+  run_id: string;
+  sequence: number;
+  protocol_name: 'eigent' | string;
+  protocol_version: number;
+  action: string;
+  payload_json: Record<string, unknown>;
+  source_kind: string;
+  source_event_id: string;
+  source_ordinal: number;
+  created_at: string;
+}
 export interface ProductSummary { id: string; external_id: string; title: string; version: number; status: string; data: CanonicalProduct }
 export interface ProductDetail extends ProductSummary { graph: { nodes: GraphNode[]; edges: GraphEdge[] } }
 export interface GraphNode { id: string; node_type: string; state: string; version: number; data: Record<string, unknown> }
@@ -33,6 +47,7 @@ export const api = {
   tasks: (projectId?: string) => request<{ items: Task[] }>(`/api/tasks${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`),
   createTask: (projectId: string, objective: string) => request<{ task: Task }>('/api/tasks', { method: 'POST', body: JSON.stringify({ project_id: projectId, objective }) }),
   task: (taskId: string) => request<TaskDetail>(`/api/tasks/${encodeURIComponent(taskId)}`),
+  productEvents: (taskId: string, afterSequence = 0) => request<{ items: ProductEvent[]; latest_sequence: number; protocol_name: string; protocol_version: number }>(`/api/tasks/${encodeURIComponent(taskId)}/product-events?after_sequence=${afterSequence}&protocol_version=1`),
   uploadSources: (taskId: string, files: File[]) => { const body = new FormData(); files.forEach((file) => body.append('files', file)); return request<{ task_id: string; source_paths: string[] }>(`/api/tasks/${encodeURIComponent(taskId)}/sources`, { method: 'POST', body }); },
   runTask: (taskId: string) => request<{ task_id: string; status: string }>(`/api/tasks/${encodeURIComponent(taskId)}/run`, { method: 'POST' }),
   products: (taskId?: string) => request<{ items: ProductSummary[] }>(`/api/products${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`), product: (productId: string) => request<ProductDetail>(`/api/products/${encodeURIComponent(productId)}`),
@@ -41,4 +56,5 @@ export const api = {
   modelSettings: () => request<ModelSettings>('/api/model-settings'),
   saveModelSettings: (payload: ModelSettingsPayload) => request<ModelSettings>('/api/model-settings', { method: 'PUT', body: JSON.stringify(payload) }),
   artifactDownloadUrl: (artifactId: string) => `${baseUrl}/api/artifacts/${encodeURIComponent(artifactId)}/download`,
+  productEventStreamUrl: (taskId: string, afterSequence = 0) => `${baseUrl}/api/tasks/${encodeURIComponent(taskId)}/product-events/stream?after_sequence=${afterSequence}&protocol_version=1`,
 };

@@ -4,11 +4,13 @@ from typing import Any
 
 from ..util import json_dumps, json_loads, new_id, utc_now
 from .database import Database
+from .product_events import ProductEventStore
 
 
 class EventStore:
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, product_events: ProductEventStore | None = None) -> None:
         self.db = db
+        self.product_events = product_events
 
     def publish(self, task_id: str, event_type: str, source: str, payload: dict[str, Any]) -> dict:
         event = {
@@ -25,6 +27,8 @@ class EventStore:
                 (event["id"], task_id, event_type, source, json_dumps(payload), event["created_at"]),
             )
             event["sequence"] = cursor.lastrowid
+        if self.product_events is not None:
+            self.product_events.record_platform_event(event)
         return event
 
     def list_after(self, task_id: str, after: int = 0, limit: int = 200) -> list[dict]:

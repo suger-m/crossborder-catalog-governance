@@ -7,6 +7,7 @@ from .platform.approvals import ApprovalService
 from .platform.artifacts import ArtifactService
 from .platform.database import Database
 from .platform.events import EventStore
+from .platform.product_events import ProductEventStore
 from .platform.registry import ToolRegistry, WorkerRegistry
 from .platform.skills import SkillRegistry
 from .platform.tasks import TaskService
@@ -28,7 +29,8 @@ class CrossborderApplication:
         self.base_dir = Path(base_dir).resolve()
         self.settings = Settings(self.base_dir)
         self.database = Database(self.settings.db_path, self.base_dir / "migrations")
-        self.events = EventStore(self.database)
+        self.product_events = ProductEventStore(self.database)
+        self.events = EventStore(self.database, self.product_events)
         self.artifacts = ArtifactService(self.database, self.settings.artifact_dir, self.events)
         self.approvals = ApprovalService(self.database, self.events)
         self.tasks = TaskService(self.database, self.events)

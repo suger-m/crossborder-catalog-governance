@@ -49,6 +49,24 @@ CREATE TABLE IF NOT EXISTS events (
   payload_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS product_events (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  protocol_name TEXT NOT NULL,
+  protocol_version INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  source_event_id TEXT NOT NULL,
+  source_ordinal INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  UNIQUE(task_id, sequence),
+  UNIQUE(task_id, source_kind, source_event_id, source_ordinal, action)
+);
+CREATE INDEX IF NOT EXISTS idx_product_events_task_sequence
+  ON product_events(task_id, sequence);
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL,
