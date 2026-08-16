@@ -20,9 +20,15 @@ from camel.tasks.task import TaskState
 from fastapi.testclient import TestClient
 
 from crossborder_cowork.app import create_api
+from crossborder_cowork.agent.toolkits import (
+    CatalogToolkit,
+    ComplianceToolkit,
+    GovernanceToolkit,
+    ListingToolkit,
+)
 from crossborder_cowork.export.verification import verify_listing_package
+from crossborder_cowork.platform.execution_context import ExecutionContext, use_execution_context
 from crossborder_cowork.workforce.callback import CrossborderWorkforceCallback
-from crossborder_cowork.workforce.worker import BusinessWorker
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,9 +87,15 @@ def _run_graph(
             dependencies=list(dependency_ids),
         ))
         callback.log_task_started(TaskStartedEvent(task_id=step_id, worker_id=agent.name))
-        state = asyncio.run(
-            BusinessWorker(app, platform_task["id"], agent)._process_task(camel_task, dependencies)
+        context = ExecutionContext(
+            task_id=platform_task["id"], project_id=platform_task["project_id"],
+            process_task_id=step_id, worker_name=agent.name,
         )
+        with use_execution_context(context):
+            compact = _execute_role(app, agent, camel_task.content)
+        camel_task.result = json.dumps(compact, ensure_ascii=False)
+        app.tasks.update_step(step_id, compact["status"], compact, emit_event=False)
+        state = TaskState.DONE
         camel_task.state = state
         if state == TaskState.FAILED:
             callback.log_task_failed(TaskFailedEvent(
@@ -101,6 +113,60 @@ def _run_graph(
     root = Task(id=platform_task["id"], content=platform_task["objective"], state=TaskState.DONE)
     app.workflow.runtime._finish(platform_task["id"], root)
     return camel_tasks
+
+
+def _execute_role(app: Any, agent: Any, content: str) -> dict[str, Any]:
+    metadata = app.workers.get(agent.name).metadata
+    skill_toolkit = app.skills.toolkit(agent.name, metadata.get("skills") or [])
+    selected_skill = {
+        "catalog_steward_agent": "product-catalog",
+        "compliance_specialist_agent": "us-apparel-compliance",
+        "listing_operations_agent": "shopify-listing" if "shopify" in content.casefold() else "ebay-us-listing",
+        "governance_reviewer_agent": "catalog-governance",
+    }[agent.name]
+    skill_tools = skill_toolkit.get_tools()
+    load_skill = next(tool for tool in skill_tools if tool.func.__name__ == "load_skill")
+    asyncio.run(load_skill.async_call(name=selected_skill))
+    reference = {
+        "product-catalog": "references/canonical-fields.md",
+        "us-apparel-compliance": "references/release-gates.md",
+        "shopify-listing": "references/import-contract.md",
+        "ebay-us-listing": "references/draft-contract.md",
+        "catalog-governance": "references/review-checklist.md",
+    }[selected_skill]
+    read_reference = next(tool for tool in skill_tools if tool.func.__name__ == "read_skill_resource")
+    page = asyncio.run(read_reference.async_call(
+        name=selected_skill,
+        relative_path=reference,
+        offset=0,
+        limit=2048,
+    ))
+    assert page["content"]
+    if agent.name == "catalog_steward_agent":
+        tool = CatalogToolkit(app, agent.name).get_tools()[0]
+        return asyncio.run(tool.async_call())
+    if agent.name == "compliance_specialist_agent":
+        tool = ComplianceToolkit(app, agent.name).get_tools()[0]
+        return asyncio.run(tool.async_call(product_resource_ids=None))
+    if agent.name == "listing_operations_agent":
+        normalized = content.casefold()
+        platforms = []
+        if "shopify" in normalized:
+            platforms.append("shopify")
+        if "ebay" in normalized:
+            platforms.append("ebay_us")
+        tool = ListingToolkit(app, agent.name).get_tools()[0]
+        return asyncio.run(tool.async_call(
+            platforms=platforms or ["shopify", "ebay_us"],
+            product_resource_ids=None,
+        ))
+    tool = GovernanceToolkit(app, agent.name).get_tools()[0]
+    return asyncio.run(tool.async_call(
+        create_export_package="包" in content or "package" in content.casefold(),
+        product_resource_ids=None,
+        compliance_resource_ids=None,
+        listing_resource_ids=None,
+    ))
 
 
 def _full_delivery(app: Any, task: dict[str, Any]) -> dict[str, Task]:
@@ -133,6 +199,19 @@ def test_dynamic_workforce_resources_events_and_artifact_previews(
 ) -> None:
     client = _client(tmp_path, monkeypatch)
     app = client.app.state.crossborder_application
+    forbidden_tool_fragments = {"terminal", "search", "browser", "mcp", "publish"}
+    for worker in app.workers.list():
+        authorized = {str(name).lower() for name in worker.metadata.get("authorized_tools", [])}
+        assert not any(
+            fragment in tool_name
+            for fragment in forbidden_tool_fragments
+            for tool_name in authorized
+        )
+        visible_skills = {
+            item["name"]
+            for item in app.skills.toolkit(worker.name, worker.metadata.get("skills") or []).list_skills()
+        }
+        assert visible_skills == set(worker.metadata.get("skills") or [])
     project = app.tasks.create_project("美国女装目录治理")
     task = _create_task_with_example(
         app,

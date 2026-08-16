@@ -26,7 +26,6 @@ from .platform.materials import ProjectMaterialService
 from .platform.resources import ProjectResourceService
 from .platform.project_context import ProjectContextService
 from .platform.tool_executor import ToolExecutor
-from .tools.project_context import ProjectContextTools, register_project_context_tools
 
 
 class CrossborderApplication:
@@ -45,7 +44,7 @@ class CrossborderApplication:
         self.materials = ProjectMaterialService(
             self.database, self.settings.project_material_dir, self.settings.example_dir,
         )
-        self.skills = SkillRegistry(self.settings.skills_dir)
+        self.skills = SkillRegistry(self.settings.skills_dir, self.events)
         self.model_runtime = AgentModelRuntime(self.settings)
         self.workers = WorkerRegistry()
         self.tools = ToolRegistry()
@@ -59,53 +58,46 @@ class CrossborderApplication:
         self.tool_executor = ToolExecutor(
             self.database, self.events, self.workers, self.tools,
         )
-        register_project_context_tools(self.tools)
         for tool_name, label in {
-            "import_product_materials": "导入商品素材",
-            "parse_product_sources": "解析商品素材",
-            "write_product_graph": "写入商品图谱",
-            "create_catalog_approvals": "创建事实确认",
-            "check_product_compliance": "检查美国服装合规",
-            "generate_listing_drafts": "生成平台草稿",
-            "write_listing_graph": "写入 Listing 图谱",
-            "review_catalog_governance": "审核交付一致性",
-            "create_sku_matrix": "生成 SKU 矩阵",
-            "create_listing_package": "生成商品目录导出包",
+            "list_project_resources": "查看项目资源",
+            "inspect_task_materials": "查看任务素材",
+            "summarize_canonical_products": "查看规范商品摘要",
+            "summarize_listing_drafts": "查看平台草稿摘要",
+            "read_artifact_text": "读取文件内容",
+            "list_pending_approvals": "查看待审批事项",
+            "build_canonical_catalog": "建立规范商品目录",
+            "evaluate_us_apparel_compliance": "执行美国服装合规检查",
+            "create_listing_drafts": "生成平台草稿",
+            "review_catalog_release": "执行目录治理审核",
         }.items():
-            self.tools.register(tool_name, label, {"label": label, "kind": "business"})
+            kind = "project_context" if tool_name in {
+                "list_project_resources", "inspect_task_materials",
+                "summarize_canonical_products", "summarize_listing_drafts",
+                "read_artifact_text", "list_pending_approvals",
+            } else "business"
+            self.tools.register(tool_name, label, {"label": label, "kind": kind})
 
-        self.catalog_steward = CatalogStewardAgent(
-            self.intake, self.graph, self.artifacts, self.approvals, self.events, self.skills,
-            self.materials, self.resources, self.tool_executor,
-        )
-        self.compliance_specialist = ComplianceSpecialistAgent(
-            UsApparelComplianceService(self.taxonomy), self.artifacts, self.events,
-            self.skills, self.approvals, self.project_context, self.resources, self.tool_executor,
-        )
-        self.listing_operations = ListingOperationsAgent(
-            self.database, self.artifacts, self.events, self.skills, self.model_runtime,
-            self.graph, self.project_context, self.resources, self.tool_executor,
-        )
-        self.governance_reviewer = GovernanceReviewerAgent(
-            self.artifacts, self.events, self.skills, self.exporter,
-            self.project_context, self.resources, self.tool_executor,
-        )
+        self.compliance_service = UsApparelComplianceService(self.taxonomy)
+        self.catalog_steward = CatalogStewardAgent()
+        self.compliance_specialist = ComplianceSpecialistAgent()
+        self.listing_operations = ListingOperationsAgent()
+        self.governance_reviewer = GovernanceReviewerAgent()
         worker_config = {
             "catalog_steward_agent": {
                 "skills": ["product-catalog", "womenswear-classification"],
-                "tools": ["import_product_materials", "parse_product_sources", "write_product_graph", "create_catalog_approvals"],
+                "tools": ["list_project_resources", "inspect_task_materials", "build_canonical_catalog"],
             },
             "compliance_specialist_agent": {
                 "skills": ["us-apparel-compliance", "shopify-product-policy", "ebay-us-fashion-policy"],
-                "tools": ["get_canonical_products", "get_pending_approvals", "check_product_compliance"],
+                "tools": ["list_project_resources", "summarize_canonical_products", "list_pending_approvals", "evaluate_us_apparel_compliance"],
             },
             "listing_operations_agent": {
                 "skills": ["product-localization-en-us", "shopify-listing", "ebay-us-listing"],
-                "tools": ["get_canonical_products", "generate_listing_drafts", "write_listing_graph"],
+                "tools": ["list_project_resources", "summarize_canonical_products", "create_listing_drafts"],
             },
             "governance_reviewer_agent": {
                 "skills": ["catalog-governance"],
-                "tools": ["get_canonical_products", "get_listing_drafts", "read_artifact_text", "get_pending_approvals", "review_catalog_governance", "create_sku_matrix", "create_listing_package"],
+                "tools": ["list_project_resources", "summarize_canonical_products", "summarize_listing_drafts", "read_artifact_text", "list_pending_approvals", "review_catalog_release"],
             },
         }
         for worker in (
@@ -115,7 +107,6 @@ class CrossborderApplication:
             metadata = worker_config[worker.name]
             self.workers.register(worker.name, worker.description, metadata)
             self.workers.authorize_tools(worker.name, metadata["tools"])
-        self.project_context_tools = ProjectContextTools(self.project_context, self.tool_executor)
         self.workflow = CatalogWorkflow(self)
 
 

@@ -28,7 +28,9 @@ The Workforce can dynamically select one or more of four durable roles for each 
 
 Planner, Human Approval, Artifact/Event persistence, schema validation, graph writes, CSV/JSON/XLSX formatting, hashing, and ZIP creation are platform capabilities. Platform and market variations are loaded as Agent Skills from `skills/` rather than being implemented as extra Agents.
 
-CAMEL Workforce receives a compact manifest of project-owned resources, decomposes the objective into the minimum necessary task graph, and assigns each task by role capability. A review-only objective can run only `governance_reviewer_agent`; a full delivery objective can run Catalog first, Compliance and Listing in parallel, and Governance after their outputs are available. Complete business payloads never pass through CAMEL result strings.
+CAMEL Workforce receives a compact manifest of project-owned resources, decomposes the objective into the minimum necessary task graph, and assigns each task by role capability. Every business role is a real CAMEL `ChatAgent` hosted by `SingleAgentWorker`. The Agent discovers and loads only its role-visible Skills, reads compact project context, and chooses a focused deterministic domain Tool. A review-only objective can run only `governance_reviewer_agent`; a full delivery objective can run Catalog first, Compliance and Listing in parallel, and Governance after their outputs are available. Complete business payloads never pass through CAMEL result strings.
+
+Business Agents do not receive `TerminalToolkit`, `SearchToolkit`, browser, MCP, arbitrary filesystem, shell, or marketplace publishing capabilities. Skill references are read through a package-scoped text reader, and all state-changing work remains behind authorized project/domain Tools.
 
 ## Development setup
 
@@ -96,7 +98,9 @@ Create project (no task is created automatically)
 → enter an objective and optionally select materials or existing resources
 → CAMEL Workforce reads the compact project resource manifest
 → dynamically create and assign only the necessary 1..N Agent tasks
-→ Agents read Product/Fact/Listing/Artifact data on demand through authorized Tools
+→ each ChatAgent lists and loads only relevant role-visible Skills
+→ Agents read compact Product/Listing/Approval/Artifact context on demand
+→ Agents choose a role-specific deterministic Tool to create durable resources
 → platform schema/taxonomy/evidence validation remains authoritative
 → Human Approval persists conflicts or missing facts and creates a new resource version
 → Agent outputs become project resources and independently addressable Artifacts
@@ -125,15 +129,7 @@ npm run type-check
 npm run build
 ```
 
-The integration fixture contains two products, eight SKUs, conflicting country-of-origin evidence, and missing fiber content. The test confirms both Human Approval paths and verifies that Shopify and eBay outputs preserve the same SKU, size, material, and origin facts.
-
-Production-realistic acceptance uses a pinned CC0-1.0 public dress image plus a generated supplier XLSX, searchable PDF, JSON metadata, and image source file:
-
-```powershell
-python -m pytest tests/test_catalog_listing_integration.py tests/test_production_scenario_acceptance.py -q --color=no --tb=short
-```
-
-This acceptance covers dirty field formats, multi-file fact merging, approval reruns, channel import constraints, Artifact hashes, and listing-package integrity. It is not a substitute for importing the generated files into a real Shopify development store and an eBay Sandbox account.
+The integrated scenario covers dynamic project resources, Product Event projection, Skill activation, canonical catalog creation, US compliance, single-platform and dual-platform drafts, standalone governance, Artifact previews, package integrity, and project isolation. It does not publish to Shopify or eBay and is not a substitute for manually importing the generated drafts into marketplace test environments.
 
 ## Packaging
 

@@ -13,9 +13,13 @@ The first release builds a cross-border womenswear catalog governance applicatio
 - An Agent represents a durable business role with its own responsibility, decision boundary, inputs, and artifacts.
 - A Skill is an on-demand package of procedural knowledge and resources. Do not create a new Agent merely because a platform, country, file format, or workflow variation needs different instructions.
 - A Tool performs deterministic work such as parsing files, validating schemas, writing graph records, formatting CSV/JSON, hashing artifacts, or creating ZIP files.
+- A Skill is not a workflow orchestrator, a fixed process, an Agent, or a Tool allowlist. Activating a Skill adds its specialized instructions and available resources to the assigned Agent's context; the Agent remains the task owner and retains control over reasoning and execution.
+- After activating a Skill, an Agent may use only the parts relevant to the current objective, read referenced knowledge or assets, execute bundled scripts when useful, combine the Skill with platform Tools, or complete the task without calling a Tool. Activating a Skill does not require running every procedure or resource bundled with it.
+- The optional `allowed-tools` Skill metadata is not the semantic definition of a Skill and must not be treated as a mandatory workflow. It may be used by a compatible client as a permission hint only.
 - Skills follow progressive disclosure: expose name and description during discovery, load `SKILL.md` only when selected, and load bundled scripts/references/assets only when needed.
 - Prefer model-driven skill activation. Do not implement brittle keyword routing when the assigned Agent can select the appropriate visible Skill from the task objective.
-- Skill scripts execute only through allowlisted Tool boundaries with risk controls and Human Approval where required.
+- When a Skill's bundled script performs executable or state-changing work, the platform must run it through an allowlisted execution boundary with risk controls and Human Approval where required. This is a host-platform security constraint; it does not make the Skill a Tool orchestrator.
+- First-release business Agents must not receive TerminalToolkit, SearchToolkit, browser, MCP, arbitrary filesystem, shell, or marketplace publishing capabilities. Because TerminalToolkit is absent, text references inside an authorized Skill package may be read only through the package-scoped `read_skill_resource` capability.
 - Taxonomy validation, graph schema validation, evidence-span validation, and release-state transitions must remain platform code, not free-form LLM behavior.
 
 ## First-release Business Agents

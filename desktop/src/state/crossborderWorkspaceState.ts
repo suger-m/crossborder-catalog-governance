@@ -40,10 +40,10 @@ export interface ReducedWorkspaceState {
 }
 
 export const WORKERS: WorkerDefinition[] = [
-  { id: 'catalog_steward_agent', name: '商品目录专员', type: 'developer_agent', tools: ['inspect_product', 'classify_product', 'build_sku_graph'] },
-  { id: 'compliance_specialist_agent', name: '合规专员', type: 'document_agent', tools: ['load_compliance_skill', 'check_us_apparel', 'validate_marketplace_policy'] },
-  { id: 'listing_operations_agent', name: '商品刊登专员', type: 'document_agent', tools: ['load_localization_skill', 'build_shopify_draft', 'build_ebay_draft'] },
-  { id: 'governance_reviewer_agent', name: '治理审核员', type: 'document_agent', tools: ['validate_evidence', 'review_release_readiness', 'request_human_approval'] },
+  { id: 'catalog_steward_agent', name: '商品目录专员', type: 'developer_agent', tools: ['list_skills', 'load_skill', 'read_skill_resource', 'list_project_resources', 'inspect_task_materials', 'build_canonical_catalog'] },
+  { id: 'compliance_specialist_agent', name: '合规专员', type: 'document_agent', tools: ['list_skills', 'load_skill', 'read_skill_resource', 'list_project_resources', 'summarize_canonical_products', 'list_pending_approvals', 'evaluate_us_apparel_compliance'] },
+  { id: 'listing_operations_agent', name: '商品刊登专员', type: 'document_agent', tools: ['list_skills', 'load_skill', 'read_skill_resource', 'list_project_resources', 'summarize_canonical_products', 'create_listing_drafts'] },
+  { id: 'governance_reviewer_agent', name: '治理审核员', type: 'document_agent', tools: ['list_skills', 'load_skill', 'read_skill_resource', 'list_project_resources', 'summarize_canonical_products', 'summarize_listing_drafts', 'read_artifact_text', 'list_pending_approvals', 'review_catalog_release'] },
 ];
 
 const WORKER_BY_ID = new Map(WORKERS.map((worker) => [worker.id, worker]));

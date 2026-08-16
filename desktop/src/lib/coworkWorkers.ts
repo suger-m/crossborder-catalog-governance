@@ -24,7 +24,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
     label: '任务规划器',
     workspaceType: 'developer_agent',
     code: 'PL',
-    tools: ['list_skills', 'load_skill'],
+    tools: [],
     inAuthList: false,
   },
   {
@@ -32,7 +32,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
     label: '商品目录专员',
     workspaceType: 'developer_agent',
     code: 'CS',
-    tools: ['inspect_product', 'classify_product', 'build_sku_graph'],
+    tools: ['list_skills', 'load_skill', 'read_skill_resource', 'list_project_resources', 'inspect_task_materials', 'build_canonical_catalog'],
     inAuthList: true,
   },
   {
@@ -40,7 +40,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
     label: '合规专员',
     workspaceType: 'document_agent',
     code: 'CO',
-    tools: ['load_compliance_skill', 'check_us_apparel', 'validate_marketplace_policy'],
+    tools: ['list_skills', 'load_skill', 'read_skill_resource', 'list_project_resources', 'summarize_canonical_products', 'list_pending_approvals', 'evaluate_us_apparel_compliance'],
     inAuthList: true,
   },
   {
@@ -48,7 +48,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
     label: '商品刊登专员',
     workspaceType: 'document_agent',
     code: 'LO',
-    tools: ['load_localization_skill', 'build_shopify_draft', 'build_ebay_draft'],
+    tools: ['list_skills', 'load_skill', 'read_skill_resource', 'list_project_resources', 'summarize_canonical_products', 'create_listing_drafts'],
     inAuthList: true,
   },
   {
@@ -56,7 +56,7 @@ export const COWORK_WORKER_DEFS: CoworkWorkerDef[] = [
     label: '治理审核员',
     workspaceType: 'document_agent',
     code: 'GR',
-    tools: ['validate_evidence', 'review_release_readiness', 'request_human_approval'],
+    tools: ['list_skills', 'load_skill', 'read_skill_resource', 'list_project_resources', 'summarize_canonical_products', 'summarize_listing_drafts', 'read_artifact_text', 'list_pending_approvals', 'review_catalog_release'],
     inAuthList: true,
   },
 ];

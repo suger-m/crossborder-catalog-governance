@@ -227,6 +227,43 @@ class ProductEventStore:
                 "message": str(payload.get("message") or ""),
                 "phase": str(payload.get("phase") or ""),
             }))
+        elif event_type == "skill.activated":
+            step_id = str(payload.get("process_task_id") or "")
+            worker_name = str(payload.get("worker_name") or source)
+            skill_name = str(payload.get("skill_name") or "skill")
+            call_id = f"skill:{step_id}:{skill_name}"
+            common = {
+                "agent_name": _worker_label(worker_name),
+                "worker_name": worker_name,
+                "process_task_id": step_id,
+                "tool_call_id": call_id,
+                "toolkit_name": f"Skill · {skill_name}",
+                "method_name": "load_skill",
+                "message": f"已加载技能：{skill_name}",
+            }
+            drafts.extend([
+                ("activate_toolkit", {**common, "status": "running"}),
+                ("deactivate_toolkit", {**common, "status": "completed"}),
+            ])
+        elif event_type == "skill.resource_read":
+            step_id = str(payload.get("process_task_id") or "")
+            worker_name = str(payload.get("worker_name") or source)
+            skill_name = str(payload.get("skill_name") or "skill")
+            relative_path = str(payload.get("relative_path") or "resource")
+            call_id = f"skill-resource:{step_id}:{skill_name}:{relative_path}"
+            common = {
+                "agent_name": _worker_label(worker_name),
+                "worker_name": worker_name,
+                "process_task_id": step_id,
+                "tool_call_id": call_id,
+                "toolkit_name": f"Skill · {skill_name}",
+                "method_name": "read_skill_resource",
+                "message": f"已读取技能资料：{relative_path}",
+            }
+            drafts.extend([
+                ("activate_toolkit", {**common, "status": "running"}),
+                ("deactivate_toolkit", {**common, "status": "completed"}),
+            ])
         elif event_type in {"tool_call.started", "tool_call.succeeded", "tool_call.failed"}:
             step_id = str(payload.get("process_task_id") or "")
             worker_name = str(payload.get("worker_name") or source)

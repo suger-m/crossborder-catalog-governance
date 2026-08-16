@@ -10,9 +10,10 @@ from camel.societies.workforce.utils import RecoveryStrategy, TaskAnalysisResult
 from camel.tasks import Task
 from camel.tasks.task import TaskState
 
+from ..agent import create_business_agent
 from ..util import utc_now
 from .callback import CrossborderWorkforceCallback
-from .worker import BusinessWorker
+from .worker import BusinessAgentWorker
 
 
 class CrossborderWorkforceRuntime:
@@ -47,7 +48,16 @@ class CrossborderWorkforceRuntime:
                 self.app.listing_operations,
                 self.app.governance_reviewer,
             )
-            children = [BusinessWorker(self.app, task_id, agent) for agent in agents]
+            children = [
+                BusinessAgentWorker(
+                    self.app,
+                    task_id,
+                    agent.name,
+                    agent.description,
+                    create_business_agent(self.app, task_id, agent),
+                )
+                for agent in agents
+            ]
             callback = CrossborderWorkforceCallback(self.app, task_id)
             workforce = ResourceAwareWorkforce(
                 app=self.app,

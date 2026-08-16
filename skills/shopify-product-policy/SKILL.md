@@ -1,8 +1,18 @@
 ---
 name: shopify-product-policy
-description: Check a canonical product and Shopify draft for Shopify catalog-field completeness and accurate, non-conflicting product representation.
+description: Use when canonical womenswear facts or Shopify drafts need Shopify-specific completeness, consistency, and draft-readiness checks.
 ---
 
-# Shopify product policy
+# Shopify Product Policy
 
-Validate Shopify requirements independently of US law. Report missing fields and policy risks; never rewrite canonical facts. A platform-friendly expression may differ, but SKU, material, origin, size, and claims must remain traceable to the canonical product version.
+Use this Skill alongside US compliance only when Shopify is in scope.
+
+## Boundaries
+
+- Shopify policy is not a substitute for US legal compliance.
+- Never rewrite canonical facts to satisfy a channel field.
+- Platform-friendly wording may change expression, not SKU, material, origin, size, measurements, certifications, or claims.
+- Missing fields remain explicit Listing gaps.
+- The first release creates drafts and export files only; it never publishes.
+
+Read [references/draft-checks.md](references/draft-checks.md) for the Shopify-specific review checklist.

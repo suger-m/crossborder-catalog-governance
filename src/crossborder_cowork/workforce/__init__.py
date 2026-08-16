@@ -1,5 +1,5 @@
 from .callback import CrossborderWorkforceCallback
 from .runtime import CrossborderWorkforceRuntime
-from .worker import BusinessWorker
+from .worker import BusinessAgentWorker
 
-__all__ = ["BusinessWorker", "CrossborderWorkforceCallback", "CrossborderWorkforceRuntime"]
+__all__ = ["BusinessAgentWorker", "CrossborderWorkforceCallback", "CrossborderWorkforceRuntime"]
