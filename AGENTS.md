@@ -8,6 +8,18 @@ These instructions apply to the entire repository.
 
 The first release builds a cross-border womenswear catalog governance application for the United States, Shopify, and eBay US. It exports listing packages and does not publish products automatically.
 
+## Decision and Collaboration Principles
+
+- Reason from first principles. Identify the actual objective, constraints, invariants, and evidence before selecting an implementation pattern or copying an existing project.
+- Think globally across the complete product and execution chain. Consider upstream causes, downstream consumers, persisted state, failure recovery, security boundaries, user experience, and future maintenance before changing a local component.
+- Solve root causes instead of masking symptoms with compatibility layers, adapters, duplicated state, heuristic mappings, or one-off conditionals. Use a temporary mitigation only when its scope, removal condition, and architectural cost are explicit.
+- Treat user instructions as goals, constraints, and hypotheses to evaluate, not as proof that a proposed technical solution is correct. Verify assumptions against the repository, runtime behavior, authoritative references, and product requirements.
+- Challenge the user's proposed approach when evidence shows it is incorrect, incomplete, unsafe, unnecessarily complex, or inconsistent with the larger objective. Explain the evidence, trade-offs, and recommended alternative directly and respectfully.
+- Do not agree with mutually incompatible proposals merely to follow the latest message. Surface the conflict, determine which requirement has priority, and keep one coherent system design.
+- When missing information would materially change architecture, scope, data handling, external effects, or irreversible work, ask the user before proceeding. Prefer the available Ask User or structured user-input tool; if it is unavailable, ask one concise direct question.
+- Do not ask for confirmation when the answer can be discovered safely from the repository, current runtime, documentation, or other read-only evidence. Make reasonable, reversible assumptions and state them when they affect the result.
+- Separate verified facts, engineering judgments, assumptions, and unresolved questions. Do not present guesses as repository facts or claim that a change works before it has been verified at the appropriate integration level.
+
 ## Collaboration Responsibilities
 
 - Use the current AgentTeams design and runtime as the reference for multi-agent identity, delegation, shared context, human intervention, and lifecycle management. Do not recreate a competing orchestration model without an approved design change.
@@ -24,13 +36,10 @@ The first release builds a cross-border womenswear catalog governance applicatio
 - A Tool performs deterministic work such as parsing files, validating schemas, writing graph records, formatting CSV/JSON, hashing artifacts, or creating ZIP files.
 - A Skill is not a workflow orchestrator, a fixed process, an Agent, or a Tool allowlist. Activating a Skill adds its specialized instructions and available resources to the assigned Agent's context; the Agent remains the task owner and retains control over reasoning and execution.
 - After activating a Skill, an Agent may use only the parts relevant to the current objective, read referenced knowledge or assets, execute bundled scripts when useful, combine the Skill with platform Tools, or complete the task without calling a Tool. Activating a Skill does not require running every procedure or resource bundled with it.
-- The optional `allowed-tools` Skill metadata is not the semantic definition of a Skill and must not be treated as a mandatory workflow. It may be used by a compatible client as a permission hint only.
 - Skills follow progressive disclosure: expose name and description during discovery, load `SKILL.md` only when selected, and load bundled scripts/references/assets only when needed.
 - Prefer model-driven skill activation. Do not implement brittle keyword routing when the assigned Agent can select the appropriate visible Skill from the task objective.
 - When a Skill's bundled script performs executable or state-changing work, the platform must run it through an allowlisted execution boundary with risk controls and Human Approval where required. This is a host-platform security constraint; it does not make the Skill a Tool orchestrator.
-- First-release business Agents must not receive TerminalToolkit, SearchToolkit, browser, arbitrary filesystem, shell, or marketplace publishing capabilities unless a current approved design explicitly changes that boundary.
-- External capability access must use an approved Tool/connector contract with explicit input/output schemas, authorization, failure handling, idempotency, and auditability. Do not make a Skill a hidden workflow orchestrator or permission bypass.
-- Taxonomy validation, graph schema validation, evidence-span validation, and release-state transitions must remain platform code, not free-form LLM behavior.
+- Taxonomy validation, graph schema validation, evidence-span validation, and release-state transitions must be deterministic, verifiable, and auditable platform steps. They may be attached through platform services, lifecycle hooks, callbacks, or approved Tools, but must not be decided solely by free-form LLM output.
 
 ## First-release Manager and Business Agents
 
