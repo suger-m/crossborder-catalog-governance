@@ -45,7 +45,7 @@ function artifactDirectory(artifact: Artifact): VirtualDirectoryId {
 function isProductEvent(value: unknown): value is ProductEvent {
   if (!value || typeof value !== 'object') return false;
   const event = value as Partial<ProductEvent>;
-  return typeof event.id === 'string' && typeof event.sequence === 'number' && event.protocol_name === 'eigent' && event.protocol_version === 1 && typeof event.action === 'string' && Boolean(event.payload_json && typeof event.payload_json === 'object');
+  return typeof event.id === 'string' && typeof event.sequence === 'number' && event.protocol_name === 'agentteams' && event.protocol_version === 1 && typeof event.action === 'string' && Boolean(event.payload_json && typeof event.payload_json === 'object');
 }
 
 function contiguous(events: ProductEvent[], cursor: number): ProductEvent[] | null {
@@ -155,7 +155,7 @@ export function Workspace({ taskId, onRefreshTasks, onBackToProject }: Props) {
       if (disposed || protocolBlocked) return; source?.close(); setStreamState(cursor ? 'reconnecting' : 'connecting');
       try {
         const snapshot = await api.productEvents(taskId, cursor);
-        if (snapshot.protocol_name !== 'eigent' || snapshot.protocol_version !== 1) { protocolBlocked = true; setStreamState('closed'); setError('桌面端与后端事件协议版本不兼容，请安装同一版本后重试。'); return; }
+        if (snapshot.protocol_name !== 'agentteams' || snapshot.protocol_version !== 1) { protocolBlocked = true; setStreamState('closed'); setError('桌面端与后端事件协议版本不兼容，请安装同一版本后重试。'); return; }
         const additions = contiguous((snapshot.items || []).filter(isProductEvent), cursor);
         if (additions === null) { scheduleReconnect(0); return; }
         if (additions.length) { setEvents((current) => [...current, ...additions]); cursor = additions.at(-1)?.sequence || cursor; }

@@ -71,7 +71,7 @@ async function waitForBackend(apiUrl: string) {
       const response = await fetch(`${apiUrl}/health`);
       if (response.ok) {
         const health = await response.json() as Record<string, unknown>;
-        if (health.app_id === 'crossborder-catalog-cowork' && health.protocol_name === 'eigent' && health.protocol_version === 1) return;
+        if (health.app_id === 'crossborder-catalog-cowork' && health.protocol_name === 'agentteams' && health.protocol_version === 1) return;
         lastError = '后端身份或事件协议版本不匹配。';
       }
     } catch (error) {
