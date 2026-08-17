@@ -6,7 +6,7 @@ from ..util import json_dumps, json_loads, new_id, utc_now
 from .database import Database
 
 
-PROTOCOL_NAME = "eigent"
+PROTOCOL_NAME = "agentteams"
 PROTOCOL_VERSION = 1
 
 
@@ -32,7 +32,7 @@ class ProductEventStore:
     """Authoritative, versioned UI product-event stream.
 
     Domain services publish durable platform events. This service projects
-    those events into the Eigent workspace protocol on the backend so desktop
+    those events into the AgentTeams workspace protocol on the backend so desktop
     clients never have to infer worker, file, approval, or task state from log
     strings.
     """

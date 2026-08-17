@@ -1,6 +1,6 @@
 export interface Project { id: string; name: string; created_at: string; updated_at: string }
 export interface ProjectMaterial { id: string; project_id: string; file_name: string; relative_path: string; mime_type: string; size_bytes: number; sha256: string; origin: 'upload' | 'example' | string; metadata: Record<string, unknown>; created_at: string }
-export interface HealthStatus { status: string; app_id: string; app_version: string; protocol_name: string; protocol_version: number }
+export interface HealthStatus { status: string; app_id: string; app_version: string; protocol_name: 'agentteams' | string; protocol_version: number }
 export interface TaskStepResult { summary?: string; key_counts?: Record<string, number>; output_resource_ids?: string[]; [key: string]: unknown }
 export interface TaskStep { id: string; sequence: number; worker_name: string; title: string; status: string; dependencies?: string[]; result: TaskStepResult }
 export interface Task { id: string; project_id: string; objective: string; status: string; current_step?: string; input?: Record<string, unknown>; result?: TaskResult; error?: string; updated_at: string; steps?: TaskStep[] }
@@ -38,7 +38,7 @@ export interface ProductEvent {
   task_id: string;
   run_id: string;
   sequence: number;
-  protocol_name: 'eigent' | string;
+  protocol_name: 'agentteams' | string;
   protocol_version: number;
   action: string;
   payload_json: Record<string, unknown>;
@@ -103,7 +103,7 @@ export const api = {
   tasks: (projectId?: string) => request<{ items: Task[] }>(`/api/tasks${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`),
   createTask: (projectId: string, objective: string, materialIds: string[]) => request<{ task: Task }>('/api/tasks', { method: 'POST', body: JSON.stringify({ project_id: projectId, objective, material_ids: materialIds }) }),
   task: (taskId: string) => request<TaskDetail>(`/api/tasks/${encodeURIComponent(taskId)}`),
-  productEvents: (taskId: string, afterSequence = 0) => request<{ items: ProductEvent[]; latest_sequence: number; protocol_name: string; protocol_version: number }>(`/api/tasks/${encodeURIComponent(taskId)}/product-events?after_sequence=${afterSequence}&protocol_version=1`),
+  productEvents: (taskId: string, afterSequence = 0) => request<{ items: ProductEvent[]; latest_sequence: number; protocol_name: 'agentteams' | string; protocol_version: number }>(`/api/tasks/${encodeURIComponent(taskId)}/product-events?after_sequence=${afterSequence}&protocol_version=1`),
   uploadSources: (taskId: string, files: File[]) => { const body = new FormData(); files.forEach((file) => body.append('files', file)); return request<{ task_id: string; source_paths: string[] }>(`/api/tasks/${encodeURIComponent(taskId)}/sources`, { method: 'POST', body }); },
   runTask: (taskId: string) => request<{ task_id: string; status: string }>(`/api/tasks/${encodeURIComponent(taskId)}/run`, { method: 'POST' }),
   products: (taskId?: string) => request<{ items: ProductSummary[] }>(`/api/products${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`),

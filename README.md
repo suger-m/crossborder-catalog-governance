@@ -19,7 +19,7 @@
 
 ## 业务智能体
 
-Workforce（协同执行引擎）会根据目标动态选择一个或多个持久业务角色，不要求每次都执行完整流程：
+Workforce（基于 AgentTeams 的协同执行引擎）会根据目标动态选择一个或多个持久业务角色，不要求每次都执行完整流程：
 
 1. `catalog_steward_agent`：维护规范商品和 SKU 事实，提出分类候选。
 2. `compliance_specialist_agent`：检查美国服装法规和平台政策，不修改商品事实。
