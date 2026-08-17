@@ -49,9 +49,9 @@ Use these sources when designing or implementing the Skill runtime or project Sk
 
 When reusing generic Workforce, approval, artifact, event, desktop workspace, or model-configuration patterns, inspect the existing repository at:
 
-- `D:/vibe/e-commerce-cowork-p6-cowork`
-- `D:/vibe/_reference/camel`
-- `D:/vibe/_reference/eigent`
+- `../e-commerce-cowork-p6-cowork`
+- `../_reference/camel`
+- `../_reference/eigent`
 
 Do not copy demand-insight, comment-modeling, Demand Signal, Demand Cube, Opportunity Radar, or other domain-specific modules.
 
