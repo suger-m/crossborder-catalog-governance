@@ -14,5 +14,7 @@ web/resources/prebuilt/
 *.log
 .env
 .superpowers/
+docs/superpowers/
 .worktrees/
 .codex_tmp/
+desktop/
