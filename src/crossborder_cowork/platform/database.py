@@ -59,6 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_task_materials_task_sequence
 CREATE TABLE IF NOT EXISTS task_steps (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL,
+  external_id TEXT NOT NULL DEFAULT '',
   sequence INTEGER NOT NULL,
   worker_name TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -206,6 +207,15 @@ class Database:
 
     @classmethod
     def _ensure_platform_columns(cls, conn: sqlite3.Connection) -> None:
+        # ``task_steps.id`` is a platform-owned primary key.  AgentTeams
+        # phase/task identifiers (for example ``catalog``) are only stable
+        # inside one external task and therefore live in ``external_id``.
+        # Existing databases predate this boundary; preserve their local IDs
+        # and use those IDs as the historical external identity.
+        cls._ensure_column(conn, "task_steps", "external_id TEXT NOT NULL DEFAULT ''")
+        conn.execute(
+            "UPDATE task_steps SET external_id=id WHERE external_id=''"
+        )
         cls._ensure_column(conn, "artifacts", "project_id TEXT NOT NULL DEFAULT ''")
         cls._ensure_column(conn, "artifacts", "process_task_id TEXT NOT NULL DEFAULT ''")
         conn.execute(
@@ -246,6 +256,10 @@ class Database:
         conn.executescript(
             """
             CREATE INDEX IF NOT EXISTS idx_products_project ON products(project_id, title);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_task_steps_external
+              ON task_steps(task_id, external_id) WHERE external_id <> '';
+            CREATE INDEX IF NOT EXISTS idx_task_steps_task_external
+              ON task_steps(task_id, external_id);
             CREATE INDEX IF NOT EXISTS idx_artifacts_project_created ON artifacts(project_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_artifacts_process_task ON artifacts(process_task_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_skus_project_product ON skus(project_id, product_id);

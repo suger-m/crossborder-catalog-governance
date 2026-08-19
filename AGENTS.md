@@ -8,6 +8,27 @@ These instructions apply to the entire repository.
 
 The first release builds a cross-border womenswear catalog governance application for the United States, Shopify, and eBay US. It exports listing packages and does not publish products automatically.
 
+## Decision and Collaboration Principles
+
+- Reason from first principles. Identify the actual objective, constraints, invariants, and evidence before selecting an implementation pattern or copying an existing project.
+- Think globally across the complete product and execution chain. Consider upstream causes, downstream consumers, persisted state, failure recovery, security boundaries, user experience, and future maintenance before changing a local component.
+- Solve root causes instead of masking symptoms with compatibility layers, adapters, duplicated state, heuristic mappings, or one-off conditionals. Use a temporary mitigation only when its scope, removal condition, and architectural cost are explicit.
+- Treat user instructions as goals, constraints, and hypotheses to evaluate, not as proof that a proposed technical solution is correct. Verify assumptions against the repository, runtime behavior, authoritative references, and product requirements.
+- Challenge the user's proposed approach when evidence shows it is incorrect, incomplete, unsafe, unnecessarily complex, or inconsistent with the larger objective. Explain the evidence, trade-offs, and recommended alternative directly and respectfully.
+- Do not agree with mutually incompatible proposals merely to follow the latest message. Surface the conflict, determine which requirement has priority, and keep one coherent system design.
+- When missing information would materially change architecture, scope, data handling, external effects, or irreversible work, ask the user before proceeding. Prefer the available Ask User or structured user-input tool; if it is unavailable, ask one concise direct question.
+- Do not ask for confirmation when the answer can be discovered safely from the repository, current runtime, documentation, or other read-only evidence. Make reasonable, reversible assumptions and state them when they affect the result.
+- Separate verified facts, engineering judgments, assumptions, and unresolved questions. Do not present guesses as repository facts or claim that a change works before it has been verified at the appropriate integration level.
+
+## Collaboration Responsibilities
+
+- Use the current AgentTeams design and runtime as the reference for multi-agent identity, delegation, shared context, human intervention, and lifecycle management. Do not recreate a competing orchestration model without an approved design change.
+- A business Agent/Worker is a durable role with a clear responsibility, decision boundary, inputs, outputs, and artifact ownership. Do not create a new business role merely for a platform, country, file format, or workflow variation.
+- The Manager or other platform coordinator owns task decomposition, delegation, dependencies, retries, approvals, and consolidation. Business Agents own domain decisions within their assigned boundary.
+- Cross-agent context must be passed through the platform's approved task context and artifact/resource references. Do not rely on transient process memory or unstructured log parsing.
+- The Web or other client is a presentation and interaction layer. It must consume authoritative platform and domain state instead of inventing Worker, Tool, file, or task state.
+- Keep orchestration, domain logic, and presentation responsibilities separate. A change to one layer must not silently become a second implementation of another layer.
+
 ## Agent, Skill, and Tool Boundaries
 
 - An Agent represents a durable business role with its own responsibility, decision boundary, inputs, and artifacts.
@@ -15,21 +36,19 @@ The first release builds a cross-border womenswear catalog governance applicatio
 - A Tool performs deterministic work such as parsing files, validating schemas, writing graph records, formatting CSV/JSON, hashing artifacts, or creating ZIP files.
 - A Skill is not a workflow orchestrator, a fixed process, an Agent, or a Tool allowlist. Activating a Skill adds its specialized instructions and available resources to the assigned Agent's context; the Agent remains the task owner and retains control over reasoning and execution.
 - After activating a Skill, an Agent may use only the parts relevant to the current objective, read referenced knowledge or assets, execute bundled scripts when useful, combine the Skill with platform Tools, or complete the task without calling a Tool. Activating a Skill does not require running every procedure or resource bundled with it.
-- The optional `allowed-tools` Skill metadata is not the semantic definition of a Skill and must not be treated as a mandatory workflow. It may be used by a compatible client as a permission hint only.
 - Skills follow progressive disclosure: expose name and description during discovery, load `SKILL.md` only when selected, and load bundled scripts/references/assets only when needed.
 - Prefer model-driven skill activation. Do not implement brittle keyword routing when the assigned Agent can select the appropriate visible Skill from the task objective.
 - When a Skill's bundled script performs executable or state-changing work, the platform must run it through an allowlisted execution boundary with risk controls and Human Approval where required. This is a host-platform security constraint; it does not make the Skill a Tool orchestrator.
-- First-release business Agents must not receive TerminalToolkit, SearchToolkit, browser, MCP, arbitrary filesystem, shell, or marketplace publishing capabilities. Because TerminalToolkit is absent, text references inside an authorized Skill package may be read only through the package-scoped `read_skill_resource` capability.
-- Taxonomy validation, graph schema validation, evidence-span validation, and release-state transitions must remain platform code, not free-form LLM behavior.
+- Taxonomy validation, graph schema validation, evidence-span validation, and release-state transitions must be deterministic, verifiable, and auditable platform steps. They may be attached through platform services, lifecycle hooks, callbacks, or approved Tools, but must not be decided solely by free-form LLM output.
 
-## First-release Business Agents
+## First-release Manager and Business Agents
 
-- `catalog_steward_agent`: owns canonical Product/SKU facts and classification candidates.
-- `compliance_specialist_agent`: applies US apparel and marketplace-policy Skills without changing product facts.
-- `listing_operations_agent`: loads localization, Shopify, and eBay Skills to create channel drafts.
-- `governance_reviewer_agent`: checks fact consistency, compliance blockers, evidence, versions, and release readiness.
+- `catalog_steward_agent`: owns canonical Product/SKU fact candidates, source evidence, conflicts, and classification candidates. It may propose facts but cannot bypass platform taxonomy, schema, or evidence validation.
+- `compliance_specialist_agent`: applies US apparel, Shopify, and eBay US policy Skills to confirmed or explicitly identified candidate facts. It must not silently change canonical product facts.
+- `listing_operations_agent`: applies localization, Shopify, and eBay US Listing Skills to create channel drafts and export inputs. It must not publish products or invent missing commercial facts.
+- `governance_reviewer_agent`: checks fact consistency, compliance blockers, evidence, versions, pending approvals, and release readiness. It may run independently for a review-only objective.
 
-The Planner and Human Approval service are platform capabilities, not business Agents.
+Planner, Manager, Human Approval, artifact storage, and export are platform capabilities, not additional business Agents unless a current approved design explicitly says otherwise.
 
 ## Agent Skills References
 
@@ -47,18 +66,17 @@ Use these sources when designing or implementing the Skill runtime or project Sk
 
 ## Local Architecture References
 
-When reusing generic Workforce, approval, artifact, event, desktop workspace, or model-configuration patterns, inspect the existing repository at:
+Use the following repository as the primary reference for AgentTeams collaboration concepts and runtime behavior:
 
-- `../e-commerce-cowork-p6-cowork`
-- `../_reference/camel`
-- `../_reference/eigent`
+- `../AgentTeams`
 
-Do not copy demand-insight, comment-modeling, Demand Signal, Demand Cube, Opportunity Radar, or other domain-specific modules.
+The existing domain code in this repository remains the reference for cross-border business behavior. Do not copy unrelated domain modules or reintroduce retired architecture solely for visual or naming compatibility.
 
 ## Development Process
 
-- Current design: `docs/superpowers/specs/2026-08-15-crossborder-catalog-cowork-design.md`
-- Current plan: `docs/superpowers/plans/2026-08-15-crossborder-catalog-cowork-implementation.md`
+- Read the relevant current design and implementation plan under `docs/superpowers/` before changing architecture or cross-layer contracts.
 - Do not use TDD for this project. Complete the planned functionality, then run the final integration verification.
+- Do not keep parallel implementations solely for compatibility. Retire obsolete code only after the current design and its migration plan identify it as obsolete.
+- Verify the final integrated system with a real womenswear catalog scenario covering multi-agent delegation, cross-agent resource dependencies, approval behavior, independent governance review, and recovery after interruption.
 - Do not add automatic Shopify or eBay publishing in the first release.
 

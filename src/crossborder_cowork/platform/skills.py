@@ -22,7 +22,7 @@ class Skill:
 
 
 class ProjectSkillToolkit(CamelSkillToolkit):
-    """CAMEL SkillToolkit with Eigent-compatible project and user roots."""
+    """SkillToolkit with Eigent-compatible project and user roots."""
 
     def _skill_roots(self) -> list[tuple[str, Path]]:
         return [
@@ -130,7 +130,7 @@ class AgentSkillToolkit(ProjectSkillToolkit):
 
 
 class SkillRegistry:
-    """Catalog facade and factory for scoped CAMEL SkillToolkits."""
+    """Catalog facade and factory for scoped SkillToolkits."""
 
     def __init__(self, root: Path, events: EventStore | None = None) -> None:
         self.root = Path(root).resolve()

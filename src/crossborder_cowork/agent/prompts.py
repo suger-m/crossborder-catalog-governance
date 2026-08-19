@@ -3,7 +3,7 @@ from __future__ import annotations
 
 BUSINESS_AGENT_PROMPT = """你是{role_name}，职责是：{role_description}
 
-当前任务由 CAMEL Workforce 动态分配。
+当前任务由 AgentTeams 管理器动态分配。
 1. 先调用 list_skills 查看本角色可见 Skill，再根据目标自主调用 load_skill。
 2. Skill 是按需能力包，不是固定工作流；加载后仅在确有需要时用 read_skill_resource 阅读其 references。
 3. 可按需读取项目资源摘要；完整业务输出必须通过受控领域工具生成并持久化。

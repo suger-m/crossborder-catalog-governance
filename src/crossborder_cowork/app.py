@@ -3,16 +3,19 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
 
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .application import CrossborderApplication, build_application
+from .application import BUSINESS_WORKER_IDS, CrossborderApplication, build_application
+from .agentteams import AgentTeamsUnavailable
+from .agentteams.mcp_bridge import mount_crossborder_mcp
 from .util import json_dumps, sha256_file
 from .platform.product_events import PROTOCOL_NAME, PROTOCOL_VERSION
 
@@ -60,7 +63,16 @@ def _not_found(error: KeyError) -> HTTPException:
 
 def create_api(base_dir: Path) -> FastAPI:
     application = build_application(base_dir)
-    api = FastAPI(title="Cross-border Catalog Cowork API", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        application.agentteams_service.start()
+        try:
+            yield
+        finally:
+            application.agentteams_service.stop()
+
+    api = FastAPI(title="Cross-border Catalog Cowork API", version="0.1.0", lifespan=lifespan)
     api.state.crossborder_application = application
     api.add_middleware(
         CORSMiddleware,
@@ -69,6 +81,7 @@ def create_api(base_dir: Path) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "OPTIONS"],
         allow_headers=["Content-Type"],
     )
+    mount_crossborder_mcp(api, application)
 
     @api.exception_handler(ValueError)
     async def value_error(_: Request, error: ValueError) -> JSONResponse:
@@ -76,12 +89,24 @@ def create_api(base_dir: Path) -> FastAPI:
 
     @api.get("/health")
     def health() -> dict[str, Any]:
+        application.agentteams_service.refresh()
+        agentteams = application.agentteams_service.state().public_dict()
         return {
-            "status": "ok",
+            "status": "ok" if agentteams["ready"] else "degraded",
             "app_id": "crossborder-catalog-cowork",
             "app_version": "0.1.0",
             "protocol_name": PROTOCOL_NAME,
             "protocol_version": PROTOCOL_VERSION,
+            "agentteams": agentteams,
+        }
+
+    @api.get("/api/agentteams/health")
+    def agentteams_health() -> dict[str, Any]:
+        application.agentteams_service.refresh()
+        return {
+            "service": "agentteams",
+            "runtime": application.agentteams_service.public_dict(),
+            "service_state": application.agentteams_service.state().public_dict(),
         }
 
     @api.get("/api/projects")
@@ -200,7 +225,7 @@ def create_api(base_dir: Path) -> FastAPI:
         return {"task_id": task_id, "source_paths": paths}
 
     @api.post("/api/tasks/{task_id}/run")
-    def run_task(task_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    def run_task(task_id: str) -> dict[str, Any]:
         try:
             task = application.tasks.get_task(task_id)
         except KeyError as error:
@@ -212,7 +237,12 @@ def create_api(base_dir: Path) -> FastAPI:
         active_resources = application.resources.list(
             task["project_id"], statuses=("active",), limit=1,
         )
-        if not paths and not active_resources:
+        selected_resources = list(dict.fromkeys(
+            str(item)
+            for item in (task.get("input") or {}).get("selected_resource_ids", [])
+            if str(item).strip()
+        ))
+        if not paths and not active_resources and not selected_resources:
             raise HTTPException(
                 status_code=409,
                 detail="请先选择项目素材，或在项目中准备可复用的 active 资源",
@@ -221,17 +251,68 @@ def create_api(base_dir: Path) -> FastAPI:
         input_data["source_paths"] = paths
         input_data["material_ids"] = [item["id"] for item in application.materials.task_materials(task_id)]
         application.tasks.update_input(task_id, input_data)
-        background_tasks.add_task(application.workflow.run_task, task_id)
-        return {"task_id": task_id, "status": "queued"}
+        try:
+            delegation = application.agentteams_service.submit(
+                task_id,
+                project_id=str(task["project_id"]),
+                objective=str(task["objective"]),
+                context=application.task_contexts.snapshot_for_task(task_id),
+            )
+            application.tasks.update_status(
+                task_id,
+                "running",
+                {"summary": "已提交给 AgentTeams Manager", "agentteams": delegation, "output_resource_ids": []},
+            )
+            return delegation
+        except AgentTeamsUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
 
     @api.get("/api/tasks/{task_id}")
     def get_task(task_id: str) -> dict[str, Any]:
         try:
+            # Completed and failed tasks already have their durable local
+            # projection. Reaching back into Matrix for every read makes the
+            # Web workspace appear stuck even though the task is finished.
+            # Live states still reconcile with AgentTeams so the workflow view
+            # remains current while work is actually in progress.
+            current = application.tasks.get_task(task_id)
+            if str(current.get("status") or "") not in {"completed", "failed"}:
+                try:
+                    application.agentteams_service.sync_task(task_id)
+                except AgentTeamsUnavailable:
+                    pass
             return application.tasks.detail(
                 task_id, application.artifacts, application.approvals, application.resources,
             )
         except KeyError as error:
             raise _not_found(error) from error
+
+    @api.get("/api/tasks/{task_id}/context")
+    def get_task_context(task_id: str, worker_id: str = "", process_task_id: str = "") -> dict[str, Any]:
+        """Return the compact shared task-space manifest for AgentTeams Workers."""
+        try:
+            return application.task_contexts.snapshot_for_task(
+                task_id, worker_id=worker_id,
+                external_process_task_id=process_task_id,
+            )
+        except KeyError as error:
+            raise _not_found(error) from error
+
+    @api.get("/api/tasks/{task_id}/agentteams/messages")
+    def agentteams_messages(task_id: str) -> dict[str, Any]:
+        try:
+            application.tasks.get_task(task_id)
+            return {"items": application.agentteams_service.messages_for_task(task_id)}
+        except KeyError as error:
+            raise _not_found(error) from error
+
+    @api.get("/api/agentteams")
+    def agentteams_runtime() -> dict[str, Any]:
+        return {
+            "runtime": "agentteams",
+            "service": application.agentteams_service.public_dict(),
+            "local_context": "platform task context only",
+        }
 
     @api.put("/api/tasks/{task_id}/status")
     def set_task_status(task_id: str, payload: TaskStatusUpdate) -> dict[str, Any]:
@@ -313,10 +394,8 @@ def create_api(base_dir: Path) -> FastAPI:
     def get_agent_workspace(project_id: str, worker_name: str) -> dict[str, Any]:
         if not application.tasks.get_project(project_id):
             raise HTTPException(status_code=404, detail="Project not found")
-        try:
-            application.workers.get(worker_name)
-        except KeyError as error:
-            raise _not_found(error) from error
+        if worker_name not in BUSINESS_WORKER_IDS:
+            raise HTTPException(status_code=404, detail=f"Business worker role not found: {worker_name}")
         rows = application.database.fetchall(
             """SELECT step.id FROM task_steps step
                JOIN tasks task ON task.id=step.task_id
@@ -538,7 +617,10 @@ def create_api(base_dir: Path) -> FastAPI:
 
     @api.get("/api/workers")
     def list_workers() -> dict[str, Any]:
-        return {"items": [item.public_dict() for item in application.workers.list()]}
+        try:
+            return {"items": application.agentteams_service.list_workers()}
+        except AgentTeamsUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
 
     @api.get("/api/tools")
     def list_tools() -> dict[str, Any]:
@@ -569,12 +651,16 @@ def create_api(base_dir: Path) -> FastAPI:
     api.add_api_route("/cowork/tasks", list_tasks, methods=["GET"])
     api.add_api_route("/cowork/tasks", create_task, methods=["POST"])
     api.add_api_route("/cowork/tasks/{task_id}", get_task, methods=["GET"])
+    api.add_api_route("/cowork/tasks/{task_id}/context", get_task_context, methods=["GET"])
+    api.add_api_route("/cowork/tasks/{task_id}/agentteams/messages", agentteams_messages, methods=["GET"])
     api.add_api_route("/cowork/tasks/{task_id}/events", poll_events, methods=["GET"])
     api.add_api_route("/cowork/tasks/{task_id}/events/stream", stream_events, methods=["GET"])
     api.add_api_route("/cowork/artifacts/{artifact_id}/download", download_artifact, methods=["GET"])
     api.add_api_route("/cowork/skills", list_skills, methods=["GET"])
     api.add_api_route("/cowork/skills/{name}", get_skill, methods=["GET"])
     api.add_api_route("/cowork/workers", list_workers, methods=["GET"])
+    api.add_api_route("/cowork/agentteams", agentteams_runtime, methods=["GET"])
+    api.add_api_route("/cowork/agentteams/health", agentteams_health, methods=["GET"])
     api.add_api_route("/cowork/tools", list_tools, methods=["GET"])
     return api
 
