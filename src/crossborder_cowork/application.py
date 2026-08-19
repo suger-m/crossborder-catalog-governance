@@ -16,16 +16,39 @@ from .graph.service import CatalogGraphService
 from .intake.service import IntakeService
 from .compliance.us_apparel import UsApparelComplianceService
 from .export.package import ExportPackageService
-from .workers.catalog_steward import CatalogStewardAgent
-from .workers.compliance_specialist import ComplianceSpecialistAgent
-from .workers.listing_operations import ListingOperationsAgent
-from .workers.governance_reviewer import GovernanceReviewerAgent
 from .workflow import CatalogWorkflow
 from .platform.model_runtime import AgentModelRuntime
 from .platform.materials import ProjectMaterialService
 from .platform.resources import ProjectResourceService
 from .platform.project_context import ProjectContextService
 from .platform.tool_executor import ToolExecutor
+from .platform.task_context import TaskContextService
+from .agentteams import AgentTeamsService
+
+
+BUSINESS_WORKER_IDS = (
+    "catalog_steward_agent",
+    "compliance_specialist_agent",
+    "listing_operations_agent",
+    "governance_reviewer_agent",
+)
+
+BUSINESS_WORKER_TOOL_POLICIES = {
+    "catalog_steward_agent": (
+        "list_project_resources", "inspect_task_materials", "build_canonical_catalog",
+    ),
+    "compliance_specialist_agent": (
+        "list_project_resources", "summarize_canonical_products", "list_pending_approvals",
+        "evaluate_us_apparel_compliance",
+    ),
+    "listing_operations_agent": (
+        "list_project_resources", "summarize_canonical_products", "create_listing_drafts",
+    ),
+    "governance_reviewer_agent": (
+        "list_project_resources", "summarize_canonical_products", "summarize_listing_drafts",
+        "read_artifact_text", "list_pending_approvals", "review_catalog_release",
+    ),
+}
 
 
 class CrossborderApplication:
@@ -55,6 +78,12 @@ class CrossborderApplication:
         self.project_context = ProjectContextService(
             self.database, self.resources, self.artifacts, self.graph, self.approvals,
         )
+        # AgentTeams is the collaboration boundary.  Domain services and the
+        # legacy REST surface continue to use the same platform stores below;
+        # no second task, artifact, or approval store is introduced.
+        self.task_contexts = TaskContextService(
+            self.tasks, self.resources, self.artifacts, self.approvals,
+        )
         self.tool_executor = ToolExecutor(
             self.database, self.events, self.workers, self.tools,
         )
@@ -76,38 +105,16 @@ class CrossborderApplication:
                 "read_artifact_text", "list_pending_approvals",
             } else "business"
             self.tools.register(tool_name, label, {"label": label, "kind": kind})
+        for worker_name, authorized_tools in BUSINESS_WORKER_TOOL_POLICIES.items():
+            self.workers.register(
+                worker_name,
+                "跨境目录治理业务角色的平台授权策略。",
+                {"kind": "business_role_policy", "authorized_tools": list(authorized_tools)},
+            )
 
         self.compliance_service = UsApparelComplianceService(self.taxonomy)
-        self.catalog_steward = CatalogStewardAgent()
-        self.compliance_specialist = ComplianceSpecialistAgent()
-        self.listing_operations = ListingOperationsAgent()
-        self.governance_reviewer = GovernanceReviewerAgent()
-        worker_config = {
-            "catalog_steward_agent": {
-                "skills": ["product-catalog", "womenswear-classification"],
-                "tools": ["list_project_resources", "inspect_task_materials", "build_canonical_catalog"],
-            },
-            "compliance_specialist_agent": {
-                "skills": ["us-apparel-compliance", "shopify-product-policy", "ebay-us-fashion-policy"],
-                "tools": ["list_project_resources", "summarize_canonical_products", "list_pending_approvals", "evaluate_us_apparel_compliance"],
-            },
-            "listing_operations_agent": {
-                "skills": ["product-localization-en-us", "shopify-listing", "ebay-us-listing"],
-                "tools": ["list_project_resources", "summarize_canonical_products", "create_listing_drafts"],
-            },
-            "governance_reviewer_agent": {
-                "skills": ["catalog-governance"],
-                "tools": ["list_project_resources", "summarize_canonical_products", "summarize_listing_drafts", "read_artifact_text", "list_pending_approvals", "review_catalog_release"],
-            },
-        }
-        for worker in (
-            self.catalog_steward, self.compliance_specialist,
-            self.listing_operations, self.governance_reviewer,
-        ):
-            metadata = worker_config[worker.name]
-            self.workers.register(worker.name, worker.description, metadata)
-            self.workers.authorize_tools(worker.name, metadata["tools"])
         self.workflow = CatalogWorkflow(self)
+        self.agentteams_service = AgentTeamsService(self, base_dir=self.base_dir)
 
 
 def build_application(base_dir: Path) -> CrossborderApplication:

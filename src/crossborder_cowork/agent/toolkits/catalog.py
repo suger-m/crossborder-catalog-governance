@@ -33,6 +33,48 @@ class CatalogToolkit(BoundBusinessToolkit):
         return source_artifacts
 
     def _build(self, context: Any, paths: list[Path]) -> dict[str, Any]:
+        # Matrix/LLM retries are expected (for example after a transient MCP
+        # approval decision).  A catalog build is a durable operation for one
+        # task step, so replaying the same call must return the existing active
+        # resources instead of creating another version of every artifact.
+        existing = self.app.resources.list(
+            context.project_id,
+            statuses=("active",),
+            source_task_id=context.task_id,
+            # The root AgentTeams task is not a local task_steps row. Only
+            # persist a source_step_id for a real child process task.
+            source_step_id=(context.process_task_id if context.process_task_id != context.task_id else ""),
+            limit=100,
+        )
+        existing_collection = next(
+            (item for item in existing if item.get("resource_type") == "product_collection" and item.get("logical_key") == "canonical-products"),
+            None,
+        )
+        if existing_collection:
+            metadata = existing_collection.get("metadata") or {}
+            output_ids = [
+                item["id"]
+                for item in existing
+                if item.get("resource_type") in {"source_manifest", "canonical_product", "classification_result"}
+            ]
+            pending = [item for item in self.app.approvals.list(context.task_id) if item.get("status") == "pending"]
+            return {
+                "summary": (
+                    f"已复用本任务步骤已有的 {int(metadata.get('product_count') or 0)} 个规范商品和 "
+                    f"{sum(len(product.get('skus') or []) for product in metadata.get('products') or []) or int(metadata.get('sku_count') or 0)} 个 SKU，"
+                    f"发现 {int(metadata.get('conflict_count') or 0)} 项需要确认的事实冲突。"
+                ),
+                "key_counts": {
+                    "products": int(metadata.get("product_count") or 0),
+                    "skus": int(metadata.get("sku_count") or 0),
+                    "conflicts": int(metadata.get("conflict_count") or 0),
+                    "approvals": len(pending),
+                    "graph_nodes": int(metadata.get("graph_node_count") or 0),
+                },
+                "output_resource_ids": [existing_collection["id"], *output_ids],
+                "status": "waiting_approval" if pending else "completed",
+                "idempotent_replay": True,
+            }
         imported = [
             self.app.artifacts.import_file(
                 context.task_id,
@@ -104,23 +146,25 @@ class CatalogToolkit(BoundBusinessToolkit):
             )
             for conflict in batch.conflicts
         ]
+        sku_count = sum(len(product.skus) for product in batch.products)
         collection = self.app.resources.create(
             project_id=context.project_id,
             resource_type="product_collection",
             logical_key="canonical-products",
             owner_worker_name=self.worker_name,
             source_task_id=context.task_id,
-            source_step_id=context.process_task_id,
+            source_step_id=(context.process_task_id if context.process_task_id != context.task_id else ""),
             storage_kind="database",
             storage_ref=context.project_id,
             status="active",
             metadata={
                 "product_ids": [product.id for product in batch.products],
                 "product_count": len(batch.products),
+                "sku_count": sku_count,
                 "conflict_count": len(batch.conflicts),
+                "graph_node_count": sum(int(item.get("count") or 0) for item in graph_summary.get("nodes", [])),
             },
         )
-        sku_count = sum(len(product.skus) for product in batch.products)
         summary = (
             f"已建立 {len(batch.products)} 个规范商品和 {sku_count} 个 SKU，"
             f"发现 {len(batch.conflicts)} 项需要确认的事实冲突。"

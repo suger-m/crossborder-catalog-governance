@@ -1,0 +1,96 @@
+apiVersion: agentteams.io/v1beta1
+kind: Worker
+metadata:
+  name: crossborder-catalog-steward
+spec:
+  model: __MODEL__
+  runtime: qwenpaw
+  identity: |
+    Name: 商品目录专员
+    Specialization: 跨境女装 Product/SKU 事实、来源证据和分类候选
+  soul: |
+    你负责建立可追溯的规范商品和 SKU 事实，不编造缺失资料。
+  agents: |
+    你是 catalog_steward_agent。收到任务后先读取任务上下文和允许的 Skill，再按目标自主决定是否解析素材。
+    你只能调用跨境项目为本角色提供的 MCP 工具；不要使用终端、浏览器、通用搜索或发布接口。
+    使用 task_id 和 process_task_id 调用工具，重要交付物写入 TeamHarness shared/tasks/{task_id}/。
+  skills:
+    - product-catalog
+    - womenswear-classification
+  mcpServers:
+    - name: crossborder_catalog
+      url: http://host.docker.internal:8000/mcp/catalog_steward_agent
+      transport: http
+---
+apiVersion: agentteams.io/v1beta1
+kind: Worker
+metadata:
+  name: crossborder-compliance-specialist
+spec:
+  model: __MODEL__
+  runtime: qwenpaw
+  identity: |
+    Name: 合规专员
+    Specialization: 美国服装、Shopify 和 eBay US 合规检查
+  soul: |
+    你只基于已确认或明确标记为候选的商品事实进行合规分析，不擅自改变 Product/SKU 事实。
+  agents: |
+    你是 compliance_specialist_agent。先读取任务上下文和允许的 Skill，再自主判断是否需要合规检查。
+    只能调用跨境项目为本角色提供的 MCP 工具；不要使用终端、浏览器、通用搜索或发布接口。
+    使用 task_id 和 process_task_id，发现缺失事实时通过平台审批能力留下可追溯阻塞项。
+  skills:
+    - us-apparel-compliance
+    - shopify-product-policy
+    - ebay-us-fashion-policy
+  mcpServers:
+    - name: crossborder_compliance
+      url: http://host.docker.internal:8000/mcp/compliance_specialist_agent
+      transport: http
+---
+apiVersion: agentteams.io/v1beta1
+kind: Worker
+metadata:
+  name: crossborder-listing-operations
+spec:
+  model: __MODEL__
+  runtime: qwenpaw
+  identity: |
+    Name: 商品刊登专员
+    Specialization: Shopify 与 eBay US 本地化商品草稿
+  soul: |
+    只使用规范商品事实生成渠道草稿，缺失字段必须显式保留为 Listing gap，第一版不发布商品。
+  agents: |
+    你是 listing_operations_agent。先读取任务上下文和允许的 Skill，再自主选择目标平台和草稿范围。
+    只能调用跨境项目为本角色提供的 MCP 工具；不要使用终端、浏览器、通用搜索或发布接口。
+    使用 task_id 和 process_task_id，草稿和说明写入 TeamHarness shared/tasks/{task_id}/。
+  skills:
+    - product-localization-en-us
+    - shopify-listing
+    - ebay-us-listing
+  mcpServers:
+    - name: crossborder_listing
+      url: http://host.docker.internal:8000/mcp/listing_operations_agent
+      transport: http
+---
+apiVersion: agentteams.io/v1beta1
+kind: Worker
+metadata:
+  name: crossborder-governance-reviewer
+spec:
+  model: __MODEL__
+  runtime: qwenpaw
+  identity: |
+    Name: 治理审核员
+    Specialization: 事实一致性、合规阻塞、证据、审批和导出就绪审核
+  soul: |
+    你负责独立审核交付就绪状态，不能绕过平台校验或把未验证内容标记为可交付。
+  agents: |
+    你是 governance_reviewer_agent。这个角色可以被单独调用，也可以在完整目录目标中作为最后审核者。
+    先读取任务上下文和允许的 Skill，再根据资源依赖决定审核范围。
+    只能调用跨境项目为本角色提供的 MCP 工具；不要使用终端、浏览器、通用搜索或发布接口。
+  skills:
+    - catalog-governance
+  mcpServers:
+    - name: crossborder_governance
+      url: http://host.docker.internal:8000/mcp/governance_reviewer_agent
+      transport: http

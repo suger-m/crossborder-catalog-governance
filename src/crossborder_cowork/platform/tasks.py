@@ -60,10 +60,41 @@ class TaskService:
         if not title:
             raise ValueError("Task step title is required")
         worker_name = str(step.get("worker_name") or "platform").strip() or "platform"
+        step_id = new_id("step")
         self.db.execute(
-            "INSERT INTO task_steps(id,task_id,sequence,worker_name,title,status,result_json,started_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?)",
-            (new_id("step"), task_id, sequence, worker_name, title, "queued", "{}", None, None),
+            "INSERT INTO task_steps(id,task_id,external_id,sequence,worker_name,title,status,result_json,started_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (step_id, task_id, str(step.get("external_id") or ""), sequence, worker_name, title, "queued", "{}", None, None),
         )
+
+    def resolve_step_id(self, task_id: str, external_id: str) -> str | None:
+        """Resolve an AgentTeams identity to this task's local step ID.
+
+        The root AgentTeams task is represented by the platform ``tasks`` row,
+        not by ``task_steps``.  All other identities are scoped to one
+        external task; never query a step by its external ID globally.
+        """
+        value = str(external_id or "").strip()
+        if not value or value == task_id:
+            return task_id if value == task_id else None
+        row = self.db.fetchone(
+            "SELECT id FROM task_steps WHERE task_id=? AND external_id=?",
+            (task_id, value),
+        )
+        if row:
+            return str(row["id"])
+        # Backward compatibility for rows created before external_id was
+        # introduced, while still keeping the task scope explicit.
+        row = self.db.fetchone(
+            "SELECT id FROM task_steps WHERE task_id=? AND id=?",
+            (task_id, value),
+        )
+        return str(row["id"]) if row else None
+
+    def get_step_by_external_id(self, task_id: str, external_id: str) -> dict[str, Any] | None:
+        step_id = self.resolve_step_id(task_id, external_id)
+        if not step_id or step_id == task_id:
+            return None
+        return self.get_step(step_id)
 
     def create_step_from_workforce(
         self,
@@ -74,29 +105,56 @@ class TaskService:
         worker_name: str = "workforce",
         dependencies: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Persist a CAMEL task without translating its task identifier."""
+        """Persist an external AgentTeams step and return its local projection."""
         self.get_task(task_id)
-        process_task_id = str(process_task_id).strip()
+        external_id = str(process_task_id).strip()
         title = str(title).strip()
-        if not process_task_id or not title:
-            raise ValueError("Workforce task ID and title are required")
-        existing = self.db.fetchone("SELECT * FROM task_steps WHERE id=?", (process_task_id,))
+        if not external_id or not title:
+            raise ValueError("Step ID and title are required")
+        existing = self.db.fetchone(
+            "SELECT * FROM task_steps WHERE task_id=? AND external_id=?",
+            (task_id, external_id),
+        )
+        if not existing:
+            # Rows created by an older build used the external ID as their
+            # local primary key.  Only reuse that legacy row within the same
+            # task; never let it collide with another task's row.
+            existing = self.db.fetchone(
+                "SELECT * FROM task_steps WHERE task_id=? AND id=?",
+                (task_id, external_id),
+            )
         if existing:
-            if existing["task_id"] != task_id:
-                raise ValueError(f"Workforce task ID already belongs to another task: {process_task_id}")
+            local_step_id = str(existing["id"])
+            self.db.execute(
+                "UPDATE task_steps SET external_id=?,title=?,worker_name=? WHERE id=?",
+                (external_id, title, worker_name, local_step_id),
+            )
         else:
             row = self.db.fetchone(
                 "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM task_steps WHERE task_id=?",
                 (task_id,),
             )
             sequence = int((row or {}).get("sequence") or 0) + 1
+            local_step_id = new_id("step")
             self.db.execute(
-                "INSERT INTO task_steps(id,task_id,sequence,worker_name,title,status,result_json,started_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                (process_task_id, task_id, sequence, worker_name, title, "queued", "{}", None, None),
+                "INSERT INTO task_steps(id,task_id,external_id,sequence,worker_name,title,status,result_json,started_at,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (local_step_id, task_id, external_id, sequence, worker_name, title, "queued", "{}", None, None),
             )
         if dependencies is not None:
-            self.set_step_dependencies(task_id, process_task_id, dependencies)
-        return self.get_step(process_task_id)
+            dependency_ids: list[str] = []
+            for item in dependencies:
+                external_dependency = str(item).strip()
+                if not external_dependency:
+                    continue
+                resolved = self.resolve_step_id(task_id, external_dependency)
+                if resolved is None:
+                    raise ValueError(
+                        f"Dependency does not belong to task {task_id}: {external_dependency}"
+                    )
+                if resolved != task_id:
+                    dependency_ids.append(resolved)
+            self.set_step_dependencies(task_id, local_step_id, dependency_ids)
+        return self.get_step(local_step_id)
 
     def get_step(self, step_id: str) -> dict[str, Any]:
         row = self.db.fetchone("SELECT * FROM task_steps WHERE id=?", (step_id,))
@@ -116,7 +174,7 @@ class TaskService:
             raise ValueError(f"Step does not belong to task {task_id}: {step_id}")
         dependency_ids = list(dict.fromkeys(str(item).strip() for item in dependencies if str(item).strip()))
         if step_id in dependency_ids:
-            raise ValueError(f"Workforce dependency cycle at {step_id}")
+            raise ValueError(f"Dependency cycle at {step_id}")
         for dependency_id in dependency_ids:
             dependency = self.get_step(dependency_id)
             if dependency["task_id"] != task_id:
@@ -130,7 +188,7 @@ class TaskService:
             graph.setdefault(row["step_id"], set()).add(row["depends_on_step_id"])
         graph[step_id] = set(dependency_ids)
         if self._has_dependency_cycle(graph):
-            raise ValueError("Workforce dependency graph must be acyclic")
+            raise ValueError("Dependency graph must be acyclic")
         now = utc_now()
         with self.db.connect() as conn:
             conn.execute("DELETE FROM task_step_dependencies WHERE step_id=?", (step_id,))
@@ -149,12 +207,24 @@ class TaskService:
     ) -> dict[str, Any]:
         worker_name = str(worker_name).strip()
         if not worker_name:
-            raise ValueError("Workforce worker name is required")
-        self.create_step_from_workforce(task_id, step_id, step_id)
+            raise ValueError("Worker name is required")
+        local_step_id = self.create_step_from_workforce(task_id, step_id, step_id)["id"]
         if dependencies is not None:
-            self.set_step_dependencies(task_id, step_id, dependencies)
-        self.db.execute("UPDATE task_steps SET worker_name=? WHERE id=?", (worker_name, step_id))
-        return self.get_step(step_id)
+            dependency_ids: list[str] = []
+            for item in dependencies:
+                external_dependency = str(item).strip()
+                if not external_dependency:
+                    continue
+                resolved = self.resolve_step_id(task_id, external_dependency)
+                if resolved is None:
+                    raise ValueError(
+                        f"Dependency does not belong to task {task_id}: {external_dependency}"
+                    )
+                if resolved != task_id:
+                    dependency_ids.append(resolved)
+            self.set_step_dependencies(task_id, local_step_id, dependency_ids)
+        self.db.execute("UPDATE task_steps SET worker_name=? WHERE id=?", (worker_name, local_step_id))
+        return self.get_step(local_step_id)
 
     def list_tasks(self, project_id: str | None = None) -> list[dict[str, Any]]:
         if project_id:

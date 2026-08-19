@@ -56,7 +56,7 @@ class AgentModelRuntime:
         return json.loads(content or "{}")
 
     def camel_model(self, role: str = "worker") -> Any:
-        """Build an in-memory CAMEL backend from the existing role settings."""
+        """Build an in-memory LLM backend from the existing role settings."""
         from camel.models import ModelFactory
 
         config = self.settings.load_model(role)
