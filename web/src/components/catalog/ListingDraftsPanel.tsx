@@ -6,7 +6,7 @@ function DraftCard({ draft }: { draft: ListingDraft }) {
     <article className="listing-card">
       <div className="card-heading">
         <div>
-          <span className="kicker">{draft.platform === 'shopify' ? 'SHOPIFY' : 'EBAY 美国站'} 草稿</span>
+          <span className="kicker">{draft.platform === 'shopify' ? 'Shopify' : 'eBay 美国站'} 草稿</span>
           <h3>{draft.title}</h3>
         </div>
         <span className="status-badge draft">基于 Product v{draft.derived_from_product_version}</span>

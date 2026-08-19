@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Settings } from 'lucide-react';
+import { ChevronDown, Plus, RefreshCw, Settings } from 'lucide-react';
 import { api, type Project, type Task } from './api';
 import { SettingsCenter } from './components/settings/SettingsCenter';
 import { localizedMessage, statusLabel } from './lib/crossborderLabels';
-import { formatShortId } from './lib/format';
 import { useProjectBundle } from './hooks/useProjectBundle';
 import { useTaskLive } from './hooks/useTaskLive';
 import { OverviewView } from './views/OverviewView';
@@ -66,12 +65,11 @@ function CreateProjectDialog({
       >
         <div className="dialog-heading">
           <div>
-            <span className="kicker">新建工作区</span>
-            <h2>创建商品目录项目</h2>
+            <h2>创建项目</h2>
           </div>
           <button type="button" className="icon-button" onClick={onClose} disabled={busy} aria-label="关闭">×</button>
         </div>
-        <p className="dialog-copy">集中管理供应商资料、商品事实、合规审核、平台草稿和导出文件。</p>
+        <p className="dialog-copy muted">用于管理女装资料、商品事实、合规检查和导出包。</p>
         <label className="dialog-field">
           <span>项目名称</span>
           <input ref={inputRef} value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：夏季女装美国市场" maxLength={120} />
@@ -82,6 +80,81 @@ function CreateProjectDialog({
           <button className="primary" type="submit" disabled={busy || !name.trim()}>{busy ? '创建中…' : '创建项目'}</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function ProjectSwitcher({
+  projects,
+  selected,
+  onSelect,
+  onCreate,
+}: {
+  projects: Project[];
+  selected: Project | null;
+  onSelect: (id: string) => void;
+  onCreate: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('mousedown', onPointer);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onPointer);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="project-switcher" ref={ref}>
+      <button
+        type="button"
+        className="project-switcher-trigger"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{selected?.name || '选择项目'}</span>
+        <ChevronDown size={16} />
+      </button>
+      {open ? (
+        <div className="project-switcher-menu" role="listbox">
+          {projects.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              role="option"
+              aria-selected={selected?.id === project.id}
+              className={selected?.id === project.id ? 'selected' : ''}
+              onClick={() => {
+                onSelect(project.id);
+                setOpen(false);
+              }}
+            >
+              {project.name}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="project-switcher-create"
+            onClick={() => {
+              setOpen(false);
+              onCreate();
+            }}
+          >
+            <Plus size={15} /> 新建项目
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -186,106 +259,53 @@ function App() {
   }
 
   const sections: Array<[AppSection, string]> = [
-    ['overview', '项目总览'],
-    ['catalog', '素材与目录'],
-    ['workbench', '任务工作台'],
-    ['results', '结果与文件'],
+    ['overview', '总览'],
+    ['catalog', '目录'],
+    ['workbench', '工作台'],
+    ['results', '交付'],
   ];
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand-mark">C</div>
-        <div className="brand-copy">
-          <strong>跨境商品协作平台</strong>
-          <span>商品目录治理工作区 · 美国 · Shopify · eBay US</span>
-        </div>
+        <button type="button" className="brand-lockup" onClick={() => selectedProject && setSection('overview')}>
+          <strong>跨境目录</strong>
+        </button>
+        {projects.length ? (
+          <ProjectSwitcher
+            projects={projects}
+            selected={selectedProject}
+            onSelect={(id) => void refresh(id, null, 'overview')}
+            onCreate={() => { setDialogError(''); setDialogOpen(true); }}
+          />
+        ) : null}
         <div className="topbar-actions">
-          <span className={`health ${health}`}><i /> 服务 {statusLabel(health)}</span>
+          <span className={`health ${health}`}><i />{statusLabel(health)}</span>
           <button className="topbar-button" onClick={() => setSettingsOpen(true)} aria-label="打开设置" title="设置"><Settings size={16} /></button>
-          <button className="topbar-button" onClick={() => void refresh(selectedProject?.id, selectedTask)} aria-label="刷新">↻</button>
+          <button className="topbar-button" onClick={() => void refresh(selectedProject?.id, selectedTask)} aria-label="刷新"><RefreshCw size={15} /></button>
         </div>
       </header>
 
-      <main className="workspace-layout">
-        <aside className="history-rail">
-          <div className="rail-heading">
-            <div>
-              <span className="rail-label">工作区</span>
-              <h2>项目</h2>
-            </div>
-            <button
-              className="new-project-button"
-              onClick={() => { setDialogError(''); setDialogOpen(true); }}
-              aria-label="新建项目"
-            >
-              +
-            </button>
-          </div>
-
-          <div className="project-list">
-            {projects.map((project) => (
+      <main className={`workspace-layout${selectedProject ? '' : ' welcome'}`}>
+        {selectedProject ? (
+          <nav className="section-nav" aria-label="主功能区">
+            {sections.map(([id, label]) => (
               <button
-                className={`project-row ${selectedProject?.id === project.id ? 'selected' : ''}`}
-                key={project.id}
-                onClick={() => void refresh(project.id, null, 'overview')}
+                key={id}
+                className={section === id ? 'active' : ''}
+                onClick={() => {
+                  if (id === 'workbench' && !selectedTask && tasks[0]) openTask(tasks[0].id);
+                  else setSection(id);
+                }}
               >
-                <span className="project-avatar">{project.name.slice(0, 1).toUpperCase()}</span>
-                <span className="project-row-copy">
-                  <strong>{project.name}</strong>
-                  <small>{formatShortId(project.id)}</small>
-                </span>
-                <span className="row-chevron">›</span>
+                {label}
               </button>
             ))}
-            {!projects.length && (
-              <div className="rail-empty">
-                <span>＋</span>
-                <p>还没有项目</p>
-                <button onClick={() => setDialogOpen(true)}>创建第一个项目</button>
-              </div>
-            )}
-          </div>
-
-          {selectedProject && (
-            <>
-              <div className="rail-section-heading">
-                <span>最近任务</span>
-                <small>{tasks.length}</small>
-              </div>
-              <div className="rail-task-list">
-                {tasks.map((task) => (
-                  <button
-                    className={`task-row ${selectedTask === task.id && section === 'workbench' ? 'selected' : ''}`}
-                    key={task.id}
-                    onClick={() => openTask(task.id)}
-                  >
-                    <span className={`task-dot ${task.status}`} />
-                    <span className="task-row-copy">
-                      <strong>{task.objective}</strong>
-                      <small>{statusLabel(task.status)}</small>
-                    </span>
-                  </button>
-                ))}
-                {!tasks.length && <p className="rail-hint">先添加项目素材，再创建任务。</p>}
-              </div>
-            </>
-          )}
-
-          <div className="rail-footer">
-            <span className="rail-label">目标平台</span>
-            <span>美国 · Shopify · eBay</span>
-          </div>
-        </aside>
-
-        <section className="main-stage">
+          </nav>
+        ) : null}
+        <section className="main-stage" id="main-stage">
           {selectedProject ? (
             <>
-              <nav className="section-nav" aria-label="主功能区">
-                {sections.map(([id, label]) => (
-                  <button key={id} className={section === id ? 'active' : ''} onClick={() => setSection(id)}>{label}</button>
-                ))}
-              </nav>
               {message && <p className="banner-message">{message}</p>}
               {section === 'overview' && (
                 <OverviewView
@@ -296,7 +316,10 @@ function App() {
                   error={bundleError}
                   onOpenTask={openTask}
                   onGoCatalog={() => setSection('catalog')}
-                  onGoWorkbench={() => setSection('workbench')}
+                  onGoWorkbench={() => {
+                    if (!selectedTask && tasks[0]) openTask(tasks[0].id);
+                    else setSection('workbench');
+                  }}
                 />
               )}
               {section === 'catalog' && (
@@ -340,11 +363,9 @@ function App() {
             </>
           ) : (
             <section className="welcome-state">
-              <div className="welcome-orbit">✦</div>
-              <span className="kicker">跨境商品目录治理</span>
-              <h1>将原始资料转化为可交付的商品目录包。</h1>
-              <p>创建工作区，统一管理商品事实、美国合规检查、平台草稿、人工审批和可审计的导出文件。</p>
-              <button className="primary large" onClick={() => setDialogOpen(true)}>创建项目 <span>→</span></button>
+              <h1>美国女装目录工作台</h1>
+              <p>导出 Shopify 与 eBay US Listing 包，不自动发布。</p>
+              <button className="primary large" onClick={() => setDialogOpen(true)}>创建项目</button>
               {message && <p className="error">{message}</p>}
             </section>
           )}

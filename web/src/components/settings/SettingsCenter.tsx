@@ -105,9 +105,8 @@ export function SettingsCenter({ open, onClose }: Props) {
       <section className="settings-center" role="dialog" aria-modal="true" aria-label="工作区设置">
         <header className="settings-center-header">
           <div>
-            <span className="eyebrow">平台配置</span>
             <h2>设置</h2>
-            <p>配置本项目使用的模型运行环境和版本化智能体技能。</p>
+            <p className="muted">模型运行环境与版本化技能。</p>
           </div>
           <button className="icon-button" onClick={onClose} disabled={busy} aria-label="关闭设置">×</button>
         </header>

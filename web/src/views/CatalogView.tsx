@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Download, FilePlus2, FileText, Loader2, PackagePlus, Play, Upload } from 'lucide-react';
+import { Check, Download, FileText, Loader2, PackagePlus, Play, Upload } from 'lucide-react';
 import { api, type ProductDetail, type ProductSummary, type Project, type ProjectMaterial, type ProjectResource, type Task } from '../api';
 import type { ProjectBundle } from '../hooks/useProjectBundle';
 import { formatBytes, formatDateTime } from '../lib/format';
@@ -50,7 +50,6 @@ function ProductDetailPane({ productId }: { productId: string }) {
     <section className="product-detail">
       <div className="card-heading">
         <div>
-          <span className="kicker">规范 Product</span>
           <h3>{product.title}</h3>
         </div>
         <StatusBadge status={product.status} />
@@ -211,19 +210,17 @@ export function CatalogView({
     <section className="view-panel catalog-view">
       <header className="view-header">
         <div>
-          <span className="eyebrow">素材与商品目录</span>
-          <h1>项目资料、Product/SKU 与版本来源</h1>
-          <p>素材是输入；规范商品事实、资源版本和渠道草稿来自后端权威状态。</p>
+          <h1>素材与目录</h1>
         </div>
       </header>
 
       <nav className="subnav" aria-label="目录分区">
         {[
-          ['materials', `项目素材 ${bundle.materials.length}`],
-          ['products', `规范商品 ${bundle.products.length}`],
-          ['resources', `资源版本 ${bundle.resources.length}`],
-          ['compliance', `合规发现 ${bundle.findings.filter((item) => item.status !== 'pass').length}`],
-          ['listings', `平台草稿 ${bundle.listings.length}`],
+          ['materials', `素材 ${bundle.materials.length}`],
+          ['products', `商品 ${bundle.products.length}`],
+          ['resources', `版本 ${bundle.resources.length}`],
+          ['compliance', `合规 ${bundle.findings.filter((item) => item.status !== 'pass').length}`],
+          ['listings', `草稿 ${bundle.listings.length}`],
         ].map(([id, label]) => (
           <button key={id} className={catalogTab === id ? 'active' : ''} onClick={() => setCatalogTab(id as typeof catalogTab)}>{label}</button>
         ))}
@@ -233,10 +230,10 @@ export function CatalogView({
         <div className="catalog-grid">
           <section className="panel-card">
             <div className="panel-card-heading">
-              <div><span className="kicker">项目素材库</span><h2>供应商与示例资料</h2></div>
+              <h2>项目素材</h2>
               <div className="material-actions">
-                <button onClick={() => fileInputRef.current?.click()} disabled={Boolean(busy)}><Upload size={15} />上传素材</button>
-                <button onClick={() => void importExample()} disabled={Boolean(busy)}><PackagePlus size={15} />{busy === 'importing' ? '导入中…' : '导入示例数据'}</button>
+                <button onClick={() => fileInputRef.current?.click()} disabled={Boolean(busy)}><Upload size={15} />上传</button>
+                <button onClick={() => void importExample()} disabled={Boolean(busy)}><PackagePlus size={15} />{busy === 'importing' ? '导入中…' : '导入示例'}</button>
               </div>
             </div>
             <input
@@ -270,7 +267,7 @@ export function CatalogView({
             ) : (
               <EmptyState
                 title="项目还没有素材"
-                description="上传供应商商品资料，或显式导入一份可直接运行的女装示例数据。"
+              description="上传资料，或导入女装示例。"
                 action={(
                   <div className="inline-actions">
                     <button className="primary" onClick={() => fileInputRef.current?.click()}><Upload size={15} />上传素材</button>
@@ -283,9 +280,7 @@ export function CatalogView({
 
           <aside className="panel-card task-create-panel">
             <form onSubmit={(event) => void createTask(event)}>
-              <span className="kicker">新建治理任务</span>
-              <h2>选择素材后开始</h2>
-              <p>智能体团队会按目标自主协作，建立商品事实、检查美国合规、生成 Shopify / eBay US 草稿，并在完整交付目标下生成最终导出包。</p>
+              <h2>新建任务</h2>
               <label>任务目标
                 <textarea
                   value={objective}
@@ -344,21 +339,21 @@ export function CatalogView({
 
       {catalogTab === 'resources' && (
         <div className="panel-card">
-          <div className="panel-card-heading"><div><span className="kicker">ProjectResource</span><h2>资源版本与归属</h2></div></div>
+          <div className="panel-card-heading"><h2>资源版本</h2></div>
           <ResourceList resources={bundle.resources} />
         </div>
       )}
 
       {catalogTab === 'compliance' && (
         <div className="panel-card">
-          <div className="panel-card-heading"><div><span className="kicker">美国合规</span><h2>服装法规与平台政策发现</h2></div></div>
+          <div className="panel-card-heading"><h2>合规发现</h2></div>
           <ComplianceFindingsPanel findings={bundle.findings} />
         </div>
       )}
 
       {catalogTab === 'listings' && (
         <div className="panel-card">
-          <div className="panel-card-heading"><div><span className="kicker">渠道草稿</span><h2>Shopify / eBay US</h2></div></div>
+          <div className="panel-card-heading"><h2>平台草稿</h2></div>
           <ListingDraftsPanel drafts={bundle.listings} />
         </div>
       )}

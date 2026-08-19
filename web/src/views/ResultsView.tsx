@@ -36,11 +36,36 @@ interface Props {
 
 function PrimaryDeliveryPanel({ projected }: { projected: ProjectedArtifact | null }) {
   if (!projected) {
-    return <section className="primary-delivery missing"><div><span className="kicker">最终交付物</span><h2>尚未生成最终导出包</h2><p>任务完成并通过治理审核后，最终导出包会出现在这里。内部 JSON 草稿不会被当作最终交付物。</p></div><span className="delivery-state">等待生成</span></section>;
+    return (
+      <section className="primary-delivery missing">
+        <div>
+          <h2>尚未生成最终导出包</h2>
+          <p>治理审核通过后会出现在这里。</p>
+        </div>
+        <span className="delivery-state">等待生成</span>
+      </section>
+    );
   }
   const artifact = projected.artifact;
   const memberCount = Number(artifact.metadata?.member_count || artifact.dependency_ids?.length || 0);
-  return <section className="primary-delivery"><div className="delivery-heading"><div><span className="kicker">最终交付物</span><h2>{artifact.title || '美国站商品目录导出包'}</h2><p>{artifact.file_name}</p></div><span className="delivery-state">已封存</span></div><div className="delivery-facts"><div><span>文件大小</span><strong>{formatBytes(artifact.size_bytes)}</strong></div><div><span>包内文件</span><strong>{memberCount ? `${memberCount} 个` : '已生成'}</strong></div><div><span>完整性</span><strong>SHA-256 已记录</strong></div></div><a className="delivery-download" href={api.artifactDownloadUrl(artifact.id)}><Download size={16} />下载最终导出包</a><small>仅导出，不自动发布到 Shopify 或 eBay US</small></section>;
+  return (
+    <section className="primary-delivery">
+      <div className="delivery-heading">
+        <div>
+          <h2>{artifact.title || '美国站商品目录导出包'}</h2>
+          <p>{artifact.file_name}</p>
+        </div>
+        <span className="delivery-state">已封存</span>
+      </div>
+      <div className="delivery-facts">
+        <div><span>文件大小</span><strong>{formatBytes(artifact.size_bytes)}</strong></div>
+        <div><span>包内文件</span><strong>{memberCount ? `${memberCount} 个` : '已生成'}</strong></div>
+        <div><span>完整性</span><strong>SHA-256 已记录</strong></div>
+      </div>
+      <a className="delivery-download" href={api.artifactDownloadUrl(artifact.id)}><Download size={16} />下载导出包</a>
+      <small>仅导出，不自动发布到 Shopify 或 eBay US</small>
+    </section>
+  );
 }
 
 function StructuredArtifactPreview({ content }: { content: string }) {
@@ -90,7 +115,6 @@ function ArtifactPreviewPane({ artifact }: { artifact: Artifact }) {
     <article className="artifact-preview">
       <div className="card-heading">
         <div>
-          <span className="kicker">生成文件</span>
           <h3>{artifact.title}</h3>
         </div>
         <a className="primary artifact-download" href={api.artifactDownloadUrl(artifact.id)}><Download size={14} />下载</a>
@@ -162,11 +186,8 @@ export function ResultsView({
     <section className="view-panel results-view">
       <header className="view-header">
         <div>
-          <span className="eyebrow">结果与文件</span>
-          <h1>虚拟目录与产物预览</h1>
-          <p>每个 Artifact 独立预览/下载；商品目录、合规、Listing、治理与导出包按目录归类。</p>
+          <h1>交付</h1>
         </div>
-        <span className="muted">{bundle.materials.length} 个素材 · {visibleArtifacts.filter((item) => item.deliveryClass !== 'internal').length} 个交付结果</span>
       </header>
 
       <PrimaryDeliveryPanel projected={primaryDelivery} />
@@ -204,7 +225,7 @@ export function ResultsView({
         ) : material ? (
           <article className="artifact-preview">
             <div className="card-heading">
-              <div><span className="kicker">项目素材</span><h3>{material.file_name}</h3></div>
+              <div><h3>{material.file_name}</h3></div>
               <a className="primary artifact-download" href={api.projectMaterialDownloadUrl(material.id)}><Download size={14} />下载</a>
             </div>
             <dl>
@@ -227,7 +248,6 @@ export function ResultsView({
         ) : (
           <div className="virtual-directory-preview">
             <Folder size={34} />
-            <span className="kicker">虚拟目录</span>
             <h3>{selectedDirectory?.label || '项目文件'}</h3>
             <p>{selectedDirectory?.description || '请从目录树中选择目录或文件。'}</p>
             <strong>

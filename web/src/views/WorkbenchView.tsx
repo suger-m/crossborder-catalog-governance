@@ -4,7 +4,6 @@ import {
   Circle,
   CircleAlert,
   CircleDot,
-  FileText,
   LoaderCircle,
   LockKeyhole,
   Package,
@@ -54,15 +53,15 @@ function messageIcon(kind: ActivityKind) {
 function TaskLifecycleBanner({ detail, pending }: { detail: TaskDetail; pending: Approval[] }) {
   const status = detail.task.status;
   if (pending.length) {
-    return <div className="lifecycle-banner waiting">任务等待人工审批：{pending[0].title}</div>;
+    return <div className="lifecycle-banner waiting">等待审批：{pending[0].title}</div>;
   }
-  if (status === 'running') return <div className="lifecycle-banner running">任务执行中，计划与进展来自 AgentTeams 后端投影。</div>;
-  if (status === 'completed') return <div className="lifecycle-banner completed">任务已完成。可在「结果与文件」查看产物与导出包。</div>;
-  if (status === 'failed') return <div className="lifecycle-banner failed">任务失败：{detail.task.error || '请查看进展流中的异常说明。'}</div>;
+  if (status === 'running') return <div className="lifecycle-banner running">任务执行中</div>;
+  if (status === 'completed') return <div className="lifecycle-banner completed">任务已完成</div>;
+  if (status === 'failed') return <div className="lifecycle-banner failed">任务失败：{detail.task.error || '请查看进展中的异常。'}</div>;
   if (status === 'blocked' || status === 'waiting_approval') {
-    return <div className="lifecycle-banner waiting">任务已阻塞，需处理审批或依赖后继续。</div>;
+    return <div className="lifecycle-banner waiting">任务已阻塞</div>;
   }
-  return <div className="lifecycle-banner">任务已创建，等待 Manager 形成动态计划。</div>;
+  return <div className="lifecycle-banner">等待计划</div>;
 }
 
 export function WorkbenchView({
@@ -93,9 +92,7 @@ export function WorkbenchView({
       <section className="view-panel workbench-view">
         <header className="view-header">
           <div>
-            <span className="eyebrow">任务执行工作台</span>
-            <h1>选择一个任务查看动态计划</h1>
-            <p>计划、智能体与进展全部来自后端 TaskDetail / ProductEvent，不预设固定阶段。</p>
+            <h1>选择任务</h1>
           </div>
         </header>
         <div className="task-picker">
@@ -137,16 +134,25 @@ export function WorkbenchView({
     <section className="view-panel workbench-view">
       <header className="view-header">
         <div>
-          <span className="eyebrow">任务执行工作台</span>
-          <h1>{detail.task.objective}</h1>
-          <p>目标、动态计划、当前智能体、进展、交接、工具能力、产物与审批均投影自后端权威状态。</p>
+          {tasks.length > 1 ? (
+            <label className="task-switcher-title">
+              <span className="sr-only">当前任务</span>
+              <select value={detail.task.id} onChange={(event) => onSelectTask(event.target.value)}>
+                {tasks.map((task) => (
+                  <option key={task.id} value={task.id}>{task.objective}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <h1>{detail.task.objective}</h1>
+          )}
         </div>
         <div className="workbench-header-actions">
           <span className={`connection-chip ${streamState === 'live' ? 'live' : ''}`}>
             <Radio size={13} />{statusLabel(streamState)}
           </span>
           <StatusBadge status={detail.task.status} />
-          <button onClick={() => onOpenResults()}><FileText size={14} />结果与文件</button>
+          <button onClick={() => onOpenResults()}>查看交付</button>
         </div>
       </header>
 
@@ -155,16 +161,16 @@ export function WorkbenchView({
       <TaskLifecycleBanner detail={detail} pending={pendingApprovals} />
 
       <div className="execution-progress">
-        <div><strong>{steps.filter((step) => ['completed', 'done'].includes(step.status)).length}/{steps.length || 0}</strong><span>动态计划进度</span></div>
+        <div><strong>{steps.filter((step) => ['completed', 'done'].includes(step.status)).length}/{steps.length || 0}</strong></div>
         <div className="execution-progress-track"><span style={{ width: `${projection?.progressPercent || 0}%` }} /></div>
         <em>{projection?.progressPercent || 0}%</em>
       </div>
 
       <div className="execution-grid">
-        <aside className="execution-plan panel-card">
+        <aside className="execution-plan">
           <div className="panel-card-heading">
-            <div><span className="kicker">动态计划</span><h2>当前执行路径</h2></div>
-            <span>{steps.length ? `${steps.length} 个步骤` : '待生成'}</span>
+            <h2>计划</h2>
+            <span className="muted">{steps.length ? `${steps.length} 步` : '待生成'}</span>
           </div>
           {steps.length ? (
             <div className="execution-step-list">
@@ -183,13 +189,13 @@ export function WorkbenchView({
             <div className="execution-empty">
               <LoaderCircle className="spin" size={18} />
               <strong>正在等待 Manager 形成计划</strong>
-              <p>计划出现后会按 AgentTeams 实际分配动态展示，不预设固定流程。</p>
+              <p>计划出现后会显示在这里。</p>
             </div>
           )}
 
           {projection?.handoffs.length ? (
             <div className="execution-handoff-list">
-              <span className="kicker">智能体交接</span>
+              <span className="muted">交接</span>
               {projection.handoffs.map((item) => (
                 <div className="execution-handoff-item" key={item.id}>
                   <span>{agentLabel(item.from === 'coordinator' ? 'coordinator' : item.from)}</span>
@@ -202,7 +208,7 @@ export function WorkbenchView({
           ) : null}
 
           <div className="tool-capability-list">
-            <span className="kicker">工具能力摘要</span>
+            <span className="muted">工具</span>
             {projection?.toolCapabilities.length
               ? projection.toolCapabilities.map((label) => <span key={label} className="chip">{label}</span>)
               : <p className="muted">智能体调用业务工具后，会在此汇总可读能力名称。</p>}
@@ -221,8 +227,7 @@ export function WorkbenchView({
           </div>
 
           <div className="panel-card-heading activity-heading">
-            <div><span className="kicker">有效进展</span><h2>关键进展</h2></div>
-            <span className="activity-hint">工具和文件明细已分别汇总</span>
+            <h2>进展</h2>
           </div>
           <div className="execution-activity">
             {projection?.activity.length ? projection.activity.map((item) => (
@@ -240,15 +245,15 @@ export function WorkbenchView({
               <div className="execution-empty activity-empty">
                 <Sparkles size={18} />
                 <strong>{detail.task.status === 'running' ? 'AgentTeams 正在准备第一条进展' : '暂无可展示的协作消息'}</strong>
-                <p>收到有效进展、交接、产物、审批或结果后会显示在这里。</p>
+                <p>收到进展后会显示在这里。</p>
               </div>
             )}
           </div>
         </section>
 
-        <aside className="execution-inspector panel-card">
+        <aside className="execution-inspector">
           <div className="panel-card-heading">
-            <div><span className="kicker">交付状态</span><h2>产物 · 审批 · 结果</h2></div>
+            <h2>交付</h2>
           </div>
 
           <div className="execution-inspector-card">
@@ -259,7 +264,7 @@ export function WorkbenchView({
 
           {recentArtifacts.length ? (
             <div className="execution-artifact-list">
-              <span className="kicker">最近产物</span>
+              <span className="muted">最近产物</span>
               {recentArtifacts.map((artifact) => (
                 <button key={artifact.id} className="execution-artifact-item" onClick={() => onOpenResults(artifact.id)}>
                   <Package size={13} />
@@ -276,7 +281,7 @@ export function WorkbenchView({
 
           {pendingApprovals.length ? (
             <div className="execution-approval-list">
-              <span className="kicker">待人工审批</span>
+              <span className="muted">待审批</span>
               {pendingApprovals.map((approval) => (
                 <ApprovalCard key={approval.id} approval={approval} onDecide={onDecideApproval} />
               ))}
@@ -293,20 +298,20 @@ export function WorkbenchView({
 
           {detail.task.result?.summary ? (
             <div className="result-summary">
-              <span className="kicker">完成结果</span>
+              <span className="muted">完成结果</span>
               <p>{detail.task.result.summary}</p>
             </div>
           ) : null}
 
           {detail.task.error ? (
             <div className="error-summary">
-              <span className="kicker">错误</span>
+              <span className="muted">错误</span>
               <p>{detail.task.error}</p>
             </div>
           ) : null}
 
           <div className="execution-agent-list">
-            <span className="kicker">参与智能体</span>
+            <span className="muted">参与智能体</span>
             {projection?.participatingAgents.length
               ? projection.participatingAgents.map((worker) => (
                 <div key={worker} className="agent-row">
